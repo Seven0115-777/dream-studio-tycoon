@@ -91,6 +91,8 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /female-actors-anime-atlas-v1\.jpg/);
   assert.match(page, /rookies-anime-atlas-v2\.jpg/);
   assert.match(page, /动漫头像/);
+  assert.doesNotMatch(page, /fetch\("\/api\/script-score"/);
+  assert.match(page, /import\.meta\.env\.BASE_URL/);
   assert.match(css, /\.talent-card\.selected \.avatar, \.avatar\.large \{ background-color:/);
   assert.match(css, /\.operation-casting \.talent-card\.selected \.avatar \{ background-color:/);
   assert.match(page, /PRODUCTION MONITOR/);

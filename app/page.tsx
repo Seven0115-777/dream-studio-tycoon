@@ -722,13 +722,9 @@ export default function Home() {
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
   }
 
-  async function requestScriptEvaluation() {
+  function requestScriptEvaluation() {
     setEvaluatingScript(true);
     try {
-      const response = await fetch("/api/script-score", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers: scriptAnswers, questionIds: scriptQuestions.map((question) => question.id), genre: genre.name, studioLevel }) });
-      if (!response.ok) throw new Error("script scoring failed");
-      showScriptPaper(await response.json() as ScriptReport);
-    } catch {
       showScriptPaper(evaluateScript(scriptAnswers, scriptQuestions.map((question) => question.id), genre.name, studioLevel));
     } finally {
       setEvaluatingScript(false);
@@ -1199,13 +1195,15 @@ export default function Home() {
 
 function PortraitAvatar({ person, group, large = false, mini = false }: { person: { id: number; name: string; avatar: string }; group: PortraitGroup; large?: boolean; mini?: boolean }) {
   const actorIsFemale = group === "actor" && person.id > 12;
-  const atlas = group === "director"
+  const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const atlasPath = group === "director"
     ? "/images/portraits/directors-anime-atlas-v1.jpg"
     : group === "rookie"
       ? "/images/portraits/rookies-anime-atlas-v2.jpg"
       : actorIsFemale
         ? "/images/portraits/female-actors-anime-atlas-v1.jpg"
         : "/images/portraits/male-actors-anime-atlas-v1.jpg";
+  const atlas = `${baseUrl}${atlasPath}`;
   const index = group === "director" ? person.id - 1 : group === "rookie" ? person.id - 101 : actorIsFemale ? person.id - 13 : person.id - 1;
   const column = index % 4;
   const row = Math.floor(index / 4);
