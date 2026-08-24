@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -14,11 +14,18 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "造梦片场｜电影制作模拟器",
-  description: "组建主创班底，制作并发行电影，用票房和奖项书写你的影业传奇。",
+  description: "移动端电影制作模拟器：创作剧本、组建主创、制作发行，并用票房和奖项书写影业传奇。",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#20211f",
 };
 
 export default function RootLayout({
