@@ -1034,7 +1034,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
   .cinema-screen-live { width: 70%; top: 21%; }
   .cinema-screen-live h2 { margin-top: 4%; padding: 4px 8px; font-size: 17px; }
   .cinema-screen-live > div b { font-size: 46px; }
-  .room-operation-shell .project-board { margin: 12px; border-radius: 7px; }
+  .room-operation-shell .project-board { width: calc(100% - 24px); margin: 12px auto; border-radius: 7px; }
   .operation-writers .project-board { width: auto; margin: 0; padding: 14px 10px 24px; border-radius: 0; }
   .script-paper { padding: 42px 19px 36px; box-shadow: 0 18px 38px rgba(0,0,0,.48), 7px 9px 0 rgba(128,74,79,.35), 12px 16px 25px rgba(0,0,0,.22); }
   .script-paper::before { inset: 12px; }

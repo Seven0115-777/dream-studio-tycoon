@@ -123,6 +123,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(css, /env\(safe-area-inset-bottom\)/);
   assert.match(css, /min-height:\s*48px/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
+  assert.match(css, /\.room-operation-shell \.project-board \{ width: calc\(100% - 24px\); margin: 12px auto;/);
   assert.match(economy, /buildReleaseModel/);
   assert.match(scriptEngine, /getScriptQuestions/);
   assert.match(scriptEngine, /getScriptQuestionBank/);
