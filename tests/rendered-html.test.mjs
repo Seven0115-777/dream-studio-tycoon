@@ -92,6 +92,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /rookies-anime-atlas-v2\.webp/);
   assert.match(page, /mobileSceneAssets/);
   assert.match(page, /动漫头像/);
+  assert.match(page, /industry-news-avatar/);
   assert.doesNotMatch(page, /fetch\("\/api\/script-score"/);
   assert.match(page, /import\.meta\.env\.BASE_URL/);
   assert.match(css, /\.talent-card\.selected \.avatar, \.avatar\.large \{ background-color:/);

@@ -446,11 +446,13 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
 .industry-news > div:first-child { display: grid; gap: 2px; }
 .industry-news > div:first-child span { color: var(--yellow); font-size: 8px; font-weight: 900; letter-spacing: .12em; }
 .industry-news > div:first-child b { font-family: var(--serif); font-size: 17px; }
-.industry-news article { display: grid; grid-template-columns: 31px 1fr; gap: 9px; align-items: center; padding: 9px; border-radius: 12px; background: #343531; }
-.industry-news article > span { display: grid; width: 31px; height: 31px; place-items: center; border-radius: 10px; background: #5b5c55; font-size: 11px; font-weight: 900; }
-.industry-news article.negative > span { background: var(--red); }
-.industry-news article.positive > span { background: var(--teal); }
-.industry-news article div { display: grid; gap: 2px; }
+.industry-news article { display: grid; grid-template-columns: 48px 1fr; gap: 10px; align-items: center; min-height: 66px; padding: 9px; border-radius: 12px; background: #343531; }
+.industry-news-avatar { width: 48px; height: 48px; position: relative; }
+.industry-news .industry-news-avatar .portrait-avatar { width: 48px; height: 48px; border-radius: 8px; }
+.industry-news-avatar > i { width: 19px; height: 19px; position: absolute; right: -4px; bottom: -3px; display: grid; place-items: center; border: 2px solid #343531; border-radius: 7px; background: #5b5c55; color: white; font-size: 8px; font-style: normal; font-weight: 900; }
+.industry-news article.negative .industry-news-avatar > i { background: var(--red); }
+.industry-news article.positive .industry-news-avatar > i { background: var(--teal); }
+.industry-news article > div:last-child { display: grid; gap: 3px; }
 .industry-news article b { font-size: 10px; }
 .industry-news article small { color: #b9b7af; font-size: 8px; }
 .industry-news p { margin: 2px 0 0; color: #c6c4bd; font-size: 8px; line-height: 1.5; }
@@ -1063,6 +1065,31 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
   .campaign-poster { min-height: 144px; }
   .operation-cinema-board { min-height: 430px; background-position: center 30%; }
   .operation-cinema-board .cinema-screen-live { top: 18%; width: 68%; }
+  .owned-talent > header { grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; padding: 15px; }
+  .owned-talent .portrait-avatar { width: 62px; height: 62px; }
+  .owned-talent header > div b { font-size: 15px; line-height: 1.25; }
+  .owned-talent header > div small { margin-top: 5px; font-size: 10px; line-height: 1.45; }
+  .owned-talent header > i { max-width: 130px; font-size: 9px; line-height: 1.4; }
+  .owned-stats span { padding: 12px 5px; font-size: 9px; }
+  .owned-stats b { margin-top: 5px; font-size: 16px; }
+  .owned-economy { gap: 8px; padding: 12px; }
+  .owned-economy > div { padding: 11px 9px; }
+  .owned-economy span { font-size: 9px; }
+  .owned-economy b { margin: 6px 0; font-size: 14px; }
+  .owned-economy small { font-size: 8px; line-height: 1.45; }
+  .genre-chips { gap: 6px; padding: 0 12px 12px; }
+  .genre-chips span { padding: 5px 8px; font-size: 9px; }
+  .training-panel { padding: 13px; }
+  .training-panel > div:first-child { margin-bottom: 10px; }
+  .training-panel > div:first-child span { font-size: 11px; }
+  .training-panel > div:first-child small { font-size: 9px; }
+  .training-buttons { gap: 8px; }
+  .training-buttons > button, .genre-training button { min-height: 64px; padding: 10px; }
+  .training-buttons b { font-size: 11px; }
+  .training-buttons small { margin-top: 5px; font-size: 9px; line-height: 1.35; }
+  .genre-training { gap: 8px; }
+  .genre-training select { min-height: 54px; padding: 0 11px; font-size: 11px; }
+  .operation-agency .owned-talent header > div small, .operation-agency .owned-economy span, .operation-agency .owned-economy small, .operation-agency .training-panel small, .operation-agency .training-buttons small { color: #82a5ac; }
 }
 
 @media (hover: hover) and (pointer: fine) {
