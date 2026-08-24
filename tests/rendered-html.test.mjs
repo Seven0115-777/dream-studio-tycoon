@@ -76,8 +76,8 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /进入公司经营期/);
   assert.match(page, /确认交稿/);
   assert.match(page, /确认评分，前往选角/);
-  assert.match(css, /filming-clapperboard-mobile-v1\.png/);
-  assert.match(css, /premiere-cinema-full-mobile-v2\.png/);
+  assert.match(css, /filming-clapperboard-mobile-v1\.webp/);
+  assert.match(css, /premiere-cinema-full-mobile-v2\.webp/);
   assert.match(page, /BOX OFFICE TERMINAL/);
   assert.match(page, /SOCIAL PULSE/);
   assert.match(page, /PROJECT CONTROL/);
@@ -86,10 +86,11 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /CAPITAL ACCESS TERMINAL/);
   assert.match(css, /@keyframes feed-rise/);
   assert.match(css, /premiere-live-screen \.awards-row/);
-  assert.match(page, /directors-anime-atlas-v1\.jpg/);
-  assert.match(page, /male-actors-anime-atlas-v1\.jpg/);
-  assert.match(page, /female-actors-anime-atlas-v1\.jpg/);
-  assert.match(page, /rookies-anime-atlas-v2\.jpg/);
+  assert.match(page, /directors-anime-atlas-v1\.webp/);
+  assert.match(page, /male-actors-anime-atlas-v1\.webp/);
+  assert.match(page, /female-actors-anime-atlas-v1\.webp/);
+  assert.match(page, /rookies-anime-atlas-v2\.webp/);
+  assert.match(page, /mobileSceneAssets/);
   assert.match(page, /动漫头像/);
   assert.doesNotMatch(page, /fetch\("\/api\/script-score"/);
   assert.match(page, /import\.meta\.env\.BASE_URL/);

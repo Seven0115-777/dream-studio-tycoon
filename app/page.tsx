@@ -23,6 +23,19 @@ type SigningTarget = { actor: Actor; origin: "mature" | "rookie"; rookie?: Rooki
 type UtilityRoom = "agency" | null;
 type PortraitGroup = "director" | "actor" | "rookie";
 
+const ASSET_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+const assetUrl = (path: string) => `${ASSET_BASE}${path}`;
+const mobileSceneAssets = [
+  "studio-hub-mobile-v1.webp",
+  "project-room-mobile-v1.webp",
+  "writers-room-mobile-v1.webp",
+  "casting-room-mobile-v1.webp",
+  "filming-stage-mobile-v1.webp",
+  "release-room-mobile-v1.webp",
+  "premiere-cinema-full-mobile-v2.webp",
+  "talent-agency-mobile-v1.webp",
+];
+
 type LocalGameSave = {
   version: 1;
   year: number;
@@ -326,6 +339,17 @@ export default function Home() {
   const [companyNotice, setCompanyNotice] = useState("");
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [saveReady, setSaveReady] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      mobileSceneAssets.forEach((file) => {
+        const image = new Image();
+        image.decoding = "async";
+        image.src = assetUrl(`/images/studio-prototype/mobile/${file}`);
+      });
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -1195,15 +1219,14 @@ export default function Home() {
 
 function PortraitAvatar({ person, group, large = false, mini = false }: { person: { id: number; name: string; avatar: string }; group: PortraitGroup; large?: boolean; mini?: boolean }) {
   const actorIsFemale = group === "actor" && person.id > 12;
-  const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
   const atlasPath = group === "director"
-    ? "/images/portraits/directors-anime-atlas-v1.jpg"
+    ? "/images/portraits/directors-anime-atlas-v1.webp"
     : group === "rookie"
-      ? "/images/portraits/rookies-anime-atlas-v2.jpg"
+      ? "/images/portraits/rookies-anime-atlas-v2.webp"
       : actorIsFemale
-        ? "/images/portraits/female-actors-anime-atlas-v1.jpg"
-        : "/images/portraits/male-actors-anime-atlas-v1.jpg";
-  const atlas = `${baseUrl}${atlasPath}`;
+        ? "/images/portraits/female-actors-anime-atlas-v1.webp"
+        : "/images/portraits/male-actors-anime-atlas-v1.webp";
+  const atlas = assetUrl(atlasPath);
   const index = group === "director" ? person.id - 1 : group === "rookie" ? person.id - 101 : actorIsFemale ? person.id - 13 : person.id - 1;
   const column = index % 4;
   const row = Math.floor(index / 4);
