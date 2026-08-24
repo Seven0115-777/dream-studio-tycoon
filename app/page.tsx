@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionBar, GameHeader, Metric, ResultStat, ScreenHead as PageHead, SectionTitle, StageProgress } from "./components/mobile-ui";
 import { calculateCompetitionPressure, generateCompetitors, type CompetitorMovie } from "./competition-system";
 import { annualInvestmentAmount, buildContentModel, buildReleaseModel, calculateCareerRewards, studioReachMultiplier } from "./economy";
@@ -20,6 +20,8 @@ type EventEffect = { label: string; hint: string; quality: number; market: numbe
 type ProductionEvent = { title: string; description: string; safe: EventEffect; bold: EventEffect };
 type CompanyTab = "roster" | "market" | "rookies";
 type SigningTarget = { actor: Actor; origin: "mature" | "rookie"; rookie?: RookieCandidate };
+type UtilityRoom = "agency" | null;
+type PortraitGroup = "director" | "actor" | "rookie";
 
 type LocalGameSave = {
   version: 1;
@@ -124,6 +126,15 @@ const marketing = [
 const TALENT_COST_SCALE = 1.6;
 
 const stageLabels = ["项目企划", "剧本创作", "组建班底", "拍摄制作", "定档发行", "市场检验", "公司经营"];
+const workflowRooms = [
+  { code: "PROJECT", name: "电影筹备室", scene: "project", prompt: "确定片名、题材与制作规模", action: "坐到制片桌前" },
+  { code: "SCRIPT", name: "剧本创作间", scene: "writers", prompt: "在稿纸上完成故事的关键选择", action: "打开剧本工作台" },
+  { code: "CAST", name: "选角会议室", scene: "casting", prompt: "查看导演与演员档案，完成邀约", action: "开始组建主创" },
+  { code: "STAGE", name: "主摄影棚", scene: "filming", prompt: "监督拍摄，并处理片场突发事件", action: "进入拍摄现场" },
+  { code: "RELEASE", name: "发行宣发部", scene: "release", prompt: "选择档期、研判竞品并制定宣发", action: "打开发行作战台" },
+  { code: "PREMIERE", name: "首映电影院", scene: "cinema", prompt: "守候首周票房与真实观众口碑", action: "进入首周直播" },
+  { code: "AGENCY", name: "艺人经纪部", scene: "agency", prompt: "完成年度经营并进入下一制片年", action: "打开经纪工作台" },
+] as const;
 
 function scriptThreshold(profile: ActorProfile) {
   return tierScriptThreshold(profile.tier);
@@ -262,8 +273,21 @@ function money(value: number) {
   return value >= 10000 ? `${(value / 10000).toFixed(2)}亿` : `${Math.round(value).toLocaleString("zh-CN")}万`;
 }
 
+function StudioRoomButton({ className, code, name, note, disabled, onClick }: { className: string; code: string; name: string; note: string; disabled?: boolean; onClick: () => void }) {
+  return <button type="button" className={`studio-room ${className}`} disabled={disabled} onClick={onClick}>
+    <span>{disabled ? "LOCKED" : code}</span>
+    <b>{name}</b>
+    <small>{note}</small>
+    <i>{disabled ? "锁" : "→"}</i>
+  </button>;
+}
+
 export default function Home() {
   const [stage, setStage] = useState(0);
+  const [inStudioHub, setInStudioHub] = useState(true);
+  const [utilityRoom, setUtilityRoom] = useState<UtilityRoom>(null);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [showFinance, setShowFinance] = useState(false);
   const [year, setYear] = useState(1);
   const [cash, setCash] = useState(36000);
   const [studioXp, setStudioXp] = useState(0);
@@ -291,6 +315,7 @@ export default function Home() {
   const [history, setHistory] = useState<{ title: string; gross: number; awards: number }[]>([]);
   const [revealedDays, setRevealedDays] = useState(0);
   const [autoPlay, setAutoPlay] = useState(true);
+  const liveFeedRef = useRef<HTMLDivElement>(null);
   const [signedTalents, setSignedTalents] = useState<TalentContract[]>([]);
   const [agencyLedger, setAgencyLedger] = useState<AgencyLedger | null>(null);
   const [actorHonors, setActorHonors] = useState<Record<number, string[]>>({});
@@ -368,6 +393,12 @@ export default function Home() {
   }, [stage, result, autoPlay, revealedDays]);
 
   useEffect(() => {
+    if (stage !== 5 || !workspaceOpen || !result) return;
+    const timer = window.setTimeout(() => liveFeedRef.current?.scrollIntoView({ behavior: revealedDays === 0 ? "auto" : "smooth", block: "center" }), 120);
+    return () => window.clearTimeout(timer);
+  }, [stage, workspaceOpen, result, revealedDays]);
+
+  useEffect(() => {
     if (!saveReady) return;
     const save: LocalGameSave = {
       version: 1,
@@ -440,6 +471,7 @@ export default function Home() {
   const castTierOpeningBonus = cast.length ? cast.reduce((sum, actor) => sum + tierOpeningBonus(getActorProfile(actor).tier), 0) / cast.length : 0;
   const performanceLead = cast.length ? [...cast].sort((first, second) => second.acting + (deals[second.id]?.morale ?? 0) * .2 - first.acting - (deals[first.id]?.morale ?? 0) * .2)[0] : null;
   const revealedReports = result?.dailyReports.slice(0, revealedDays) ?? [];
+  const visibleReports = revealedReports.slice(-2);
   const latestReport = revealedReports[revealedReports.length - 1] ?? null;
   const liveWeekGross = revealedReports.reduce((sum, report) => sum + report.boxOffice, 0);
 
@@ -460,6 +492,34 @@ export default function Home() {
   }).sort((first, second) => Number(signedTalentIds.has(second.id)) - Number(signedTalentIds.has(first.id))), [actorFilter, actorPool, actorQuery, genre, signedTalentIds]);
   const liveTrend = revealedDays === 7 && result ? result.trend : !latestReport ? "等待开画" : latestReport.change !== null && latestReport.change >= 0 ? "口碑发酵" : latestReport.change !== null && latestReport.change <= -12 ? "热度回落" : "市场运行";
   const liveTrendNote = revealedDays === 7 && result ? result.trendNote : !latestReport ? "首日票房、散场声音与网络评价即将同步更新。" : latestReport.change !== null && latestReport.change >= 0 ? `第 ${latestReport.day} 天票房较前一日上涨 ${latestReport.change}%，路人推荐正在转化为购票。` : latestReport.change !== null && latestReport.change <= -12 ? `第 ${latestReport.day} 天跌幅达到 ${Math.abs(latestReport.change)}%，内容口碑暂未承接开画热度。` : `第 ${latestReport.day} 天市场表现保持在常规区间，后续走势仍由口碑决定。`;
+  const activeWorkflowRoom = workflowRooms[Math.min(stage, workflowRooms.length - 1)];
+  const activeRoom = utilityRoom === "agency" ? workflowRooms[6] : activeWorkflowRoom;
+
+  function openWorkflowRoom() {
+    setUtilityRoom(null);
+    setWorkspaceOpen(false);
+    setInStudioHub(false);
+  }
+
+  function openAgencyUtility() {
+    setCompanyTab(signedTalents.length ? "roster" : "market");
+    setCompanyNotice("");
+    setUtilityRoom("agency");
+    setWorkspaceOpen(false);
+    setInStudioHub(false);
+  }
+
+  function returnToHub() {
+    setUtilityRoom(null);
+    setWorkspaceOpen(false);
+    setInStudioHub(true);
+  }
+
+  function moveToStage(nextStage: number) {
+    setUtilityRoom(null);
+    setWorkspaceOpen(false);
+    setStage(nextStage);
+  }
 
   function requestActor(actor: Actor) {
     if (cast.some((item) => item.id === actor.id)) {
@@ -526,6 +586,8 @@ export default function Home() {
   function enterCompanyManagement() {
     setCompanyTab(signedTalents.length ? "roster" : "market");
     setCompanyNotice("");
+    setUtilityRoom(null);
+    setWorkspaceOpen(false);
     setStage(6);
   }
 
@@ -655,14 +717,19 @@ export default function Home() {
     setCash((value) => value + annualInvestment);
   }
 
+  function showScriptPaper(report: ScriptReport | null) {
+    setScriptReport(report);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+  }
+
   async function requestScriptEvaluation() {
     setEvaluatingScript(true);
     try {
       const response = await fetch("/api/script-score", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ answers: scriptAnswers, questionIds: scriptQuestions.map((question) => question.id), genre: genre.name, studioLevel }) });
       if (!response.ok) throw new Error("script scoring failed");
-      setScriptReport(await response.json() as ScriptReport);
+      showScriptPaper(await response.json() as ScriptReport);
     } catch {
-      setScriptReport(evaluateScript(scriptAnswers, scriptQuestions.map((question) => question.id), genre.name, studioLevel));
+      showScriptPaper(evaluateScript(scriptAnswers, scriptQuestions.map((question) => question.id), genre.name, studioLevel));
     } finally {
       setEvaluatingScript(false);
     }
@@ -698,6 +765,8 @@ export default function Home() {
     setCash(Math.max(0, cash - totalCost + studioRevenue - investorShare - successBonus));
     setRevealedDays(0);
     setAutoPlay(true);
+    setUtilityRoom(null);
+    setWorkspaceOpen(false);
     setStage(5);
   }
 
@@ -791,6 +860,9 @@ export default function Home() {
     setRevealedDays(0);
     setAutoPlay(true);
     setCompanyNotice("");
+    setUtilityRoom(null);
+    setWorkspaceOpen(false);
+    setInStudioHub(true);
     setStage(0);
   }
 
@@ -798,11 +870,56 @@ export default function Home() {
     <main className="app-shell">
       <GameHeader level={studioLevel} year={year} cash={money(cash)} reputation={reputation} xpProgress={studioXpProgress} />
       <StageProgress stage={stage} labels={stageLabels} />
+      {inStudioHub ? <section className="studio-hub" aria-label="造梦片场公司总部">
+        <div className="studio-hub__shade" />
+        <header className="studio-hub__intro">
+          <span>DREAM STUDIO · YEAR {String(year).padStart(2, "0")}</span>
+          <h1>欢迎回到，<em>造梦片场。</em></h1>
+          <p>电影制作按房间依次推进；经纪部与融资中心随时开放，不会改变当前项目进度。</p>
+        </header>
+        <div className="studio-rooms">
+          <StudioRoomButton className="room-current" code={`当前主线 · ${activeWorkflowRoom.code}`} name={activeWorkflowRoom.name} note={`${stageLabels[stage]} · ${activeWorkflowRoom.prompt}`} onClick={openWorkflowRoom} />
+          <StudioRoomButton className="room-agency" code="ALWAYS OPEN" name="艺人经纪部" note={`${signedTalents.length}/${rosterCapacity} 位旗下艺人 · 签约与培训`} onClick={openAgencyUtility} />
+          <StudioRoomButton className="room-finance" code="ALWAYS OPEN" name="融资中心" note={investmentLocked ? "渠道已开放 · 第2年可正式融资" : investmentClaimed ? `第${year}年融资已完成` : `本年度可融资 ¥${money(annualInvestment)}`} onClick={() => setShowFinance(true)} />
+        </div>
+        <footer className="studio-hub__status">
+          <span><i className="live-dot" /> 公司运转中</span>
+          <b>主线锁定 · {activeWorkflowRoom.name}</b>
+          <small>完成当前房间后，下一扇门才会开启</small>
+        </footer>
+      </section> : <>
+      <div className="room-scene-nav">
+        <button type="button" onClick={returnToHub}>← 返回主片场</button>
+        <span>{utilityRoom === "agency" ? "常驻支线" : stageLabels[stage]} · {activeRoom.name}</span>
+        <small>《{title || "未命名计划"}》</small>
+      </div>
+      {!workspaceOpen && <section className={`department-scene department-scene--${activeRoom.scene}`} aria-label={`${activeRoom.name}场景`}>
+        <div className="department-scene__copy">
+          <span>{activeRoom.code} DEPARTMENT</span>
+          <h2>{activeRoom.name}</h2>
+          <p>{utilityRoom === "agency" ? "经纪业务不会改变电影制作进度，完成后可随时回到主片场。" : activeRoom.prompt}</p>
+          <button type="button" onClick={() => setWorkspaceOpen(true)}>{activeRoom.action}<i>→</i></button>
+        </div>
+        {activeRoom.scene === "cinema" && result && <div className="cinema-screen-live">
+          <span><i className={autoPlay && revealedDays < 7 ? "live-dot" : ""} /> FIRST WEEK LIVE</span>
+          <h2>《{title}》</h2>
+          <div><b>¥{money(revealedDays === 7 ? result.gross : liveWeekGross)}</b><small>{revealedDays === 7 ? "30日最终票房" : "当前首周累计"}</small></div>
+        </div>}
+      </section>}
+      {workspaceOpen && <div className={`room-operation-shell operation-${activeRoom.scene}`}>
+      {activeRoom.scene === "cinema" && result && <section className="operation-cinema-board" aria-label="首周票房即时数据">
+        <div className="cinema-screen-live">
+          <span><i className={autoPlay && revealedDays < 7 ? "live-dot" : ""} /> FIRST WEEK LIVE</span>
+          <h2>《{title}》</h2>
+          <div><b>¥{money(revealedDays === 7 ? result.gross : liveWeekGross)}</b><small>{revealedDays === 7 ? "30日最终票房" : "当前首周累计"}</small></div>
+          <dl><div><dt>实时评分</dt><dd>{latestReport?.audienceScore ?? "--"}</dd></div><div><dt>上映进度</dt><dd>{revealedDays}/7 天</dd></div><div><dt>市场走势</dt><dd>{liveTrend}</dd></div></dl>
+        </div>
+      </section>}
       <div className="workspace">
-        <section className="project-board">
-          {stage === 0 && (
+        <section className={`project-board ${!utilityRoom && stage === 5 ? "premiere-live-screen" : ""}`}>
+          {!utilityRoom && stage === 0 && (
             <>
-              <PageHead code={`PROJECT 00${year}`} title="下一部电影，" accent="由你决定。" sub="从一个好题材开始，组建班底，把它送上大银幕。" stamp="企划中" />
+              <PageHead code={`PROJECT CONTROL · 00${year}`} title="下一部电影，" accent="由你决定。" sub="从一个好题材开始，组建班底，把它送上大银幕。" stamp="系统待命" />
               {agencyLedger && <>
                 <div className="agency-ledger"><span>上一年度公司结算</span><div><b className="positive">+¥{money(agencyLedger.externalIncome)}</b><small>艺人外部工作分成</small></div><div><b className="negative">-¥{money(agencyLedger.salaryCost)}</b><small>新年度固定薪资</small></div><div><b className="negative">-¥{money(agencyLedger.operatingCost ?? 0)}</b><small>公司运营与团队成本</small></div><p>年度经营净额 {agencyLedger.externalIncome - agencyLedger.salaryCost - (agencyLedger.operatingCost ?? 0) >= 0 ? "+" : "-"}¥{money(Math.abs(agencyLedger.externalIncome - agencyLedger.salaryCost - (agencyLedger.operatingCost ?? 0)))}</p></div>
                 {!!agencyLedger.talentNews?.length && <div className="industry-news"><div><span>INDUSTRY WATCH</span><b>年度艺人舆情与市场变动</b></div>{agencyLedger.talentNews.map((news) => <article className={news.tone} key={`${agencyLedger.year}-${news.actorId}`}><span>{news.tone === "negative" ? "负" : news.tone === "positive" ? "升" : "稳"}</span><div><b>{news.actorName} · {news.title}</b><small>公众号召力 {news.appealDelta >= 0 ? "+" : ""}{news.appealDelta}</small></div></article>)}{agencyLedger.breakoutNotes?.map((note) => <p className="breakout-note" key={note}>新人出圈 · {note}</p>)}{agencyLedger.tierChanges?.map((note) => <p className="tier-change-note" key={note}>评级变动 · {note}</p>)}{!!agencyLedger.retiredNames?.length && <p>{agencyLedger.retiredNames.join("、")}达到职业生涯终点，正式退休。</p>}{!!agencyLedger.expiredNames.length && <p>{agencyLedger.expiredNames.join("、")}合约到期，已回到自由市场。</p>}</div>}
@@ -817,37 +934,51 @@ export default function Home() {
               </div>
               <SectionTitle number="2" title="制作规模" note={`公司当前可用资金 ¥${money(cash)}`} />
               <div className="budget-choice">{budgets.map((item) => <button key={item.name} className={budget.name === item.name ? "selected" : ""} onClick={() => setBudget(item)}>{item.name}<small>¥{money(Math.round(item.value * industryCostIndex))}</small></button>)}</div>
-              <aside className={`investment-ad ${investmentClaimed ? "claimed" : ""} ${investmentLocked ? "locked" : ""}`} aria-label="年度拉投资广告位">
-                <div className="investment-ad__copy"><span>AD · 商业合作</span><b>{investmentLocked ? "融资渠道将在第二年开放" : investmentClaimed ? "本年度融资已经完成" : "观看合作内容，拉取项目投资"}</b><p>{investmentLocked ? "先用首部电影证明制作能力，第二制片年开始可接触外部投资。" : investmentClaimed ? `投资款已到账；投资方将抽取本片片方分账的10%，最多回收 ¥${money(annualInvestment * 1.5)}。` : `本年度可获得 ¥${money(annualInvestment)}，额度每两个制片年提高 ¥2,000万；投资方抽取片方分账10%，最多回收投资额的1.5倍。`}</p></div>
-                <button type="button" disabled={investmentLocked || investmentClaimed} onClick={claimAnnualInvestment}><small>{investmentLocked ? "第 2 年解锁" : investmentClaimed ? `第 ${year} 年已领取` : "本年度限领一次"}</small><strong>{investmentLocked ? "拉投资 · 尚未解锁" : investmentClaimed ? `已到账 ¥${money(annualInvestment)}` : `拉投资 +¥${money(annualInvestment)}`}</strong></button>
-              </aside>
               <div className="cost-index-note"><span>行业成本指数 ×{industryCostIndex.toFixed(2)}</span><p>场地、器材、保险与人工会随年份上涨；高等级公司也承担更高年度运营成本。</p></div>
-              <ActionBar label={`${title || "未命名"} · ${genre.name}`} detail={`制作预算 ¥${money(currentBudgetCost)}`} button="开始剧本创作" disabled={!title.trim() || currentBudgetCost > cash} onClick={() => setStage(1)} />
+              <ActionBar label={`${title || "未命名"} · ${genre.name}`} detail={`制作预算 ¥${money(currentBudgetCost)}`} button="开始剧本创作" disabled={!title.trim() || currentBudgetCost > cash} onClick={() => moveToStage(1)} />
             </>
           )}
 
-          {stage === 1 && (
-            <>
-              <PageHead code="SCRIPT LAB" title="先写出一个" accent="值得被拍的故事。" sub={`本次从${genre.name}专属题池抽取六道创作选择，下一题材与下一年度都会换卷。`} stamp="创作中" />
-              <div className="script-context"><span>{genre.icon}</span><div><small>当前项目</small><b>《{title}》· {genre.name}</b></div><div><small>问卷进度</small><b>{Object.keys(scriptAnswers).length} / {scriptQuestions.length}</b></div></div>
-              <div className="questionnaire">
-                {scriptQuestions.map((question, questionIndex) => <section className="script-question" key={question.id}>
-                  <div className="question-head"><span>0{questionIndex + 1}</span><div><h2>{question.title}</h2><p>{question.prompt}</p></div></div>
-                  <div className="script-options">{question.options.map((option) => <button key={option.id} className={scriptAnswers[question.id] === option.id ? "selected" : ""} onClick={() => { setScriptAnswers((answers) => ({ ...answers, [question.id]: option.id })); setScriptReport(null); }}><b>{option.label}</b><small>{option.description}</small><i>{scriptAnswers[question.id] === option.id ? "✓ 已采用" : "选择方向"}</i></button>)}</div>
-                </section>)}
-              </div>
-              {!scriptReport && <button className="evaluate-script" disabled={Object.keys(scriptAnswers).length !== scriptQuestions.length || evaluatingScript} onClick={requestScriptEvaluation}><span>{evaluatingScript ? "后台正在评估…" : "提交后台评估剧本"}</span><small>{Object.keys(scriptAnswers).length === scriptQuestions.length ? "生成剧本评分与选角吸引力" : `还需完成 ${scriptQuestions.length - Object.keys(scriptAnswers).length} 道选择`}</small></button>}
-              {scriptReport && <div className="script-report">
-                <div className="script-score"><span>剧本评级</span><b>{scriptReport.grade}</b><strong>{scriptReport.score}<small>/100</small></strong><p>{scriptReport.verdict}</p></div>
-                <div className="script-dimensions"><h3>系统评估报告</h3><Metric label="叙事结构" value={scriptReport.story} /><Metric label="人物塑造" value={scriptReport.character} /><Metric label="市场潜力" value={scriptReport.market} /><Metric label="原创表达" value={scriptReport.originality} /><div className="producer-writing-bonus"><span>选择基础分 <b>{scriptReport.baseScore}</b></span><i>+</i><span>Lv.{studioLevel} 制片经验 <b>+{scriptReport.levelBonus}</b></span><strong>最终 {scriptReport.score}</strong></div><p>制片经验只提供 0—4 分的温和修正；演员仍会比较最终剧本分数与自己的接戏门槛。</p></div>
-              </div>}
-              <ActionBar label={scriptReport ? `剧本 ${scriptReport.grade} 级 · ${scriptReport.score} 分` : "剧本尚未完成评估"} detail={scriptReport ? `${scriptReport.verdict} · 将影响选角与成片质量` : "完成全部选择后生成评分"} button="凭剧本邀约主创" disabled={!scriptReport} onClick={() => setStage(2)} back={() => setStage(0)} />
-            </>
+          {!utilityRoom && stage === 1 && (
+            <div className={`script-paper ${scriptReport ? "script-result-paper" : "script-questionnaire-paper"}`}>
+              <i className="paper-ornament paper-ornament--tl">❧</i><i className="paper-ornament paper-ornament--tr">❧</i><i className="paper-ornament paper-ornament--bl">❧</i><i className="paper-ornament paper-ornament--br">❧</i>
+              <header className="script-paper-head">
+                <span>SCRIPT DEVELOPMENT · YEAR {year}</span>
+                <h1>《{title}》{scriptReport ? "剧本评估书" : "创作定稿单"}</h1>
+                <p>{genre.icon} {genre.name} · {scriptReport ? "制片部内部评估件" : `已完成 ${Object.keys(scriptAnswers).length} / ${scriptQuestions.length} 项创作决策`}</p>
+              </header>
+
+              {!scriptReport ? <>
+                <div className="questionnaire">
+                  {scriptQuestions.map((question, questionIndex) => <section className="script-question" key={question.id}>
+                    <div className="question-head"><span>Q{questionIndex + 1}</span><div><h2>{question.title}</h2><p>{question.prompt}</p></div></div>
+                    <div className="script-options">{question.options.map((option) => {
+                      const selected = scriptAnswers[question.id] === option.id;
+                      return <button key={option.id} className={selected ? "selected" : ""} onClick={() => { setScriptAnswers((answers) => ({ ...answers, [question.id]: option.id })); setScriptReport(null); }} aria-pressed={selected}><b>{option.label}</b><small>{option.description}</small>{selected && <i>已勾选</i>}</button>;
+                    })}</div>
+                  </section>)}
+                </div>
+                <div className="script-paper-actions">
+                  <button className="paper-back" type="button" onClick={() => moveToStage(0)}>返回项目企划</button>
+                  <button className="evaluate-script" disabled={Object.keys(scriptAnswers).length !== scriptQuestions.length || evaluatingScript} onClick={requestScriptEvaluation}><span>{evaluatingScript ? "正在送审…" : "确认交稿"}</span><small>{Object.keys(scriptAnswers).length === scriptQuestions.length ? "封存选择并生成剧本评分" : `还需完成 ${scriptQuestions.length - Object.keys(scriptAnswers).length} 道选择`}</small></button>
+                </div>
+              </> : <>
+                <div className="script-result-summary">
+                  <div className="script-grade-stamp"><small>FINAL DRAFT</small><b>{scriptReport.grade}</b><span>{scriptReport.score} 分</span></div>
+                  <div><span>评审结论</span><h2>{scriptReport.verdict}</h2><p>该评分将影响导演与演员的邀约意愿、报价以及最终成片质量。</p></div>
+                </div>
+                <div className="script-dimensions"><h3>剧本质量评估</h3><Metric label="叙事结构" value={scriptReport.story} /><Metric label="人物塑造" value={scriptReport.character} /><Metric label="市场潜力" value={scriptReport.market} /><Metric label="原创表达" value={scriptReport.originality} /><div className="producer-writing-bonus"><span>选择基础分 <b>{scriptReport.baseScore}</b></span><i>+</i><span>Lv.{studioLevel} 制片经验 <b>+{scriptReport.levelBonus}</b></span><strong>最终评分 {scriptReport.score}</strong></div><p>制片经验只提供 0—4 分的温和修正；演员仍会比较最终剧本分数与自己的接戏门槛。</p></div>
+                <div className="script-paper-actions result-actions">
+                  <button className="paper-back" type="button" onClick={() => showScriptPaper(null)}>返回修改</button>
+                  <button className="paper-confirm" type="button" onClick={() => moveToStage(2)}><span>确认评分，前往选角</span><i>→</i></button>
+                </div>
+              </>}
+            </div>
           )}
 
-          {stage === 2 && (
+          {!utilityRoom && stage === 2 && (
             <>
-              <PageHead code="CAST & CREW" title="让好剧本找到" accent="对的演员。" sub={`《${title}》剧本评分 ${scriptScore}，演员会根据剧本吸引力和自身档期决定报价。`} stamp="组队中" />
+              <PageHead code="CASTING DATABASE" title="让好剧本找到" accent="对的演员。" sub={`《${title}》剧本评分 ${scriptScore}，演员会根据剧本吸引力和自身档期决定报价。`} stamp="检索中" />
               <div className={`script-leverage ${scriptScore >= 84 ? "strong" : scriptScore < 70 ? "weak" : ""}`}><span>{scriptReport?.grade}</span><div><small>剧本吸引力</small><b>{scriptScore} 分 · {scriptReport?.verdict}</b></div><p>{scriptScore >= 84 ? "头部艺人愿意为好角色降低报价。" : scriptScore >= 70 ? "大部分演员可以正常邀约，头部艺人可能要求溢价。" : "高咖演员的邀约难度较高，优先考虑适配型阵容。"}</p></div>
               <SectionTitle number="1" title="选择导演" note="点击卡片签约 1 位导演" />
               <div className="director-market-note"><span>本年度仅展示有档期的导演</span><b>{availableDirectors.length} 位可约 · 技能、号召力、报价与擅长题材会逐年变化</b></div>
@@ -866,24 +997,29 @@ export default function Home() {
                 <div><span>组合默契</span><b>{chemistry ?? "待第二位主演"}{chemistry ? ` · ${chemistry >= 88 ? "天生搭档" : chemistry >= 74 ? "值得期待" : "首次磨合"}` : ""}</b></div>
                 <div><span>平均士气</span><b className={averageMorale >= 0 ? "positive" : "negative"}>{averageMorale >= 0 ? "+" : ""}{averageMorale.toFixed(0)}</b></div>
               </div>}
-              <ActionBar label={director ? `${director.name} / ${cast.map((item) => item.name).join("、") || "待选主演"}` : "尚未选择导演"} detail={`剧本 ${scriptScore} 分 · 主创片酬 ¥${money(talentCost)} · 适配 +${fit}${chemistry ? ` · 默契 ${chemistry}` : ""}`} button="开机拍摄" disabled={!director || cast.length !== 2 || totalBeforeRelease + overheadCost > cash} onClick={() => setStage(3)} back={() => setStage(1)} />
+              <ActionBar label={director ? `${director.name} / ${cast.map((item) => item.name).join("、") || "待选主演"}` : "尚未选择导演"} detail={`剧本 ${scriptScore} 分 · 主创片酬 ¥${money(talentCost)} · 适配 +${fit}${chemistry ? ` · 默契 ${chemistry}` : ""}`} button="开机拍摄" disabled={!director || cast.length !== 2 || totalBeforeRelease + overheadCost > cash} onClick={() => { setEventChoice(null); moveToStage(3); }} back={() => moveToStage(1)} />
             </>
           )}
 
-          {stage === 3 && (
+          {!utilityRoom && stage === 3 && (
             <>
               <PageHead code="NOW FILMING" title={`《${title}》`} accent="正式开机。" sub={`${director?.name}执导，${cast.map((item) => item.name).join("、")}领衔主演。`} stamp="拍摄中" />
               <div className="production-overview">
-                <div className="poster-card"><span>{genre.icon}</span><small>星火影业 出品</small><h2>{title}</h2><p>{genre.name}</p></div>
-                <div className="production-stats"><h3>制作状态</h3><Metric label="剧本质量" value={scriptScore} /><Metric label="题材适配" value={Math.min(100, 64 + fit)} /><Metric label="班底实力" value={Math.round(((director?.skill ?? 0) + cast.reduce((sum, item) => sum + item.acting, 0) / 2) / 2)} /><Metric label="主演默契" value={chemistry ?? 60} /><Metric label="预算保障" value={budget.name === "大片级" ? 94 : budget.name === "标准制作" ? 78 : 61} /><div className="crew-line"><span>导演 <b>{director?.name}</b></span><span>主演 <b>{cast.map((item) => item.name).join(" / ")}</b></span></div></div>
+                <div className="clapperboard-card" role="img" aria-label={`《${title}》拍摄场记板`}>
+                  <div className="clapperboard-copy"><span>PRODUCTION</span><h2>{title}</h2><dl><div><dt>SCENE</dt><dd>{String(year).padStart(2, "0")}-{genre.name.slice(0, 2)}</dd></div><div><dt>TAKE</dt><dd>01</dd></div></dl><p>导演 · {director?.name}</p><small>{cast.map((item) => item.name).join(" / ")}</small></div>
+                </div>
+                <div className="production-stats"><header><div><span>PRODUCTION MONITOR</span><h3>制作状态</h3></div><i><b /> REC</i></header><Metric label="剧本质量" value={scriptScore} /><Metric label="题材适配" value={Math.min(100, 64 + fit)} /><Metric label="班底实力" value={Math.round(((director?.skill ?? 0) + cast.reduce((sum, item) => sum + item.acting, 0) / 2) / 2)} /><Metric label="主演默契" value={chemistry ?? 60} /><Metric label="预算保障" value={budget.name === "大片级" ? 94 : budget.name === "标准制作" ? 78 : 61} /><div className="crew-line"><span>DIRECTOR <b>{director?.name}</b></span><span>CAST <b>{cast.map((item) => item.name).join(" / ")}</b></span></div></div>
               </div>
-              <SectionTitle number="!" title="片场突发事件" note="你的决定会影响成片质量" />
-              <div className="event-card"><div><b>{productionEvent.title}</b><p>{productionEvent.description}</p></div><div className="event-options"><button className={eventChoice === "safe" ? "selected" : ""} onClick={() => setEventChoice("safe")}><b>{productionEvent.safe.label}</b><small>{productionEvent.safe.hint}{productionEvent.safe.cost ? ` · 当年成本 ¥${money(Math.round(productionEvent.safe.cost * industryCostIndex))}` : ""}</small></button><button className={eventChoice === "bold" ? "selected" : ""} onClick={() => setEventChoice("bold")}><b>{productionEvent.bold.label}</b><small>{productionEvent.bold.hint}{productionEvent.bold.cost ? ` · 当年成本 ¥${money(Math.round(productionEvent.bold.cost * industryCostIndex))}` : ""}</small></button></div></div>
-              <ActionBar label={`${budget.name} · ${genre.name}`} detail={`制作与主创 ¥${money(totalBeforeRelease)} · 完片保险 ¥${money(overheadCost)}${currentEventCost ? ` · 事件追加 ¥${money(currentEventCost)}` : ""}`} button="完成制作并送审" disabled={!eventChoice} onClick={() => setStage(4)} back={() => setStage(2)} />
+              <div className={`event-dialogue ${eventChoice ? "resolved" : ""}`} role="dialog" aria-labelledby="production-event-title">
+                <header><div><small>现场制片</small><b id="production-event-title">{productionEvent.title}</b></div><i>{eventChoice ? "决定已记录" : "突发情况"}</i></header>
+                <div className="event-message"><p>{productionEvent.description}</p></div>
+                <div className="event-options"><button className={eventChoice === "safe" ? "selected" : ""} onClick={() => setEventChoice("safe")}><span>A</span><div><b>{productionEvent.safe.label}</b><small>{productionEvent.safe.hint}{productionEvent.safe.cost ? ` · 当年成本 ¥${money(Math.round(productionEvent.safe.cost * industryCostIndex))}` : ""}</small></div><i>{eventChoice === "safe" ? "✓ 已决定" : "选择"}</i></button><button className={eventChoice === "bold" ? "selected" : ""} onClick={() => setEventChoice("bold")}><span>B</span><div><b>{productionEvent.bold.label}</b><small>{productionEvent.bold.hint}{productionEvent.bold.cost ? ` · 当年成本 ¥${money(Math.round(productionEvent.bold.cost * industryCostIndex))}` : ""}</small></div><i>{eventChoice === "bold" ? "✓ 已决定" : "选择"}</i></button></div>
+              </div>
+              <ActionBar label={`${budget.name} · ${genre.name}`} detail={`制作与主创 ¥${money(totalBeforeRelease)} · 完片保险 ¥${money(overheadCost)}${currentEventCost ? ` · 事件追加 ¥${money(currentEventCost)}` : ""}`} button="完成制作并送审" disabled={!eventChoice} onClick={() => moveToStage(4)} back={() => moveToStage(2)} />
             </>
           )}
 
-          {stage === 4 && (
+          {!utilityRoom && stage === 4 && (
             <>
               <PageHead code="RELEASE PLAN" title="好电影，还需要一个" accent="好时机。" sub="选择上映档期和宣发规模，市场会给出最终答案。" stamp="待定档" />
               <SectionTitle number="1" title="选择上映档期" note="热档期拥有更高上限，也意味着更多强敌" />
@@ -892,29 +1028,35 @@ export default function Home() {
               <div className="competition-summary"><div><span>预计观众分流</span><b>-{Math.round(competitionPressure * 100)}%</b></div><p>{slotCompetitors.filter((movie) => movie.tier === "S" || movie.tier === "SS").length ? `本档期有 ${slotCompetitors.filter((movie) => movie.tier === "S" || movie.tier === "SS").length} 部 S/SS 级强敌；高口碑可以在上映后逐步夺回排片。` : "本档期没有S级统治者，仍需警惕同类型影片分流。"}</p></div>
               <div className="competitor-grid">{slotCompetitors.map((movie) => <CompetitorCard key={movie.id} movie={movie} />)}</div>
               <SectionTitle number="2" title="制定宣发计划" note="宣发成本将在上映前支付" />
+              <div className="release-key-art"><div className="campaign-poster"><span>{genre.icon}</span><small>星火影业 出品</small><h2>{title}</h2><p>{genre.name}</p></div><div><span>宣发主视觉</span><b>电影海报已移交发行团队</b><p>这张主视觉将在定档官宣、城市路演和影院物料中使用，不再占用拍摄现场的场记信息位。</p></div></div>
               <div className="marketing-grid">{marketing.map((item) => <button key={item.name} className={promo.name === item.name ? "selected" : ""} onClick={() => setPromo(item)}><strong>{item.name}</strong><span>¥{money(Math.round(item.value * industryCostIndex))}</span><small>宣发强度 {item.power} · 首日触达 ×{item.boost.toFixed(2)}</small></button>)}</div>
               <div className="forecast"><span>行业预测</span><b>{scriptScore >= 84 ? "口碑潜力突出" : scriptScore < 70 ? "剧本风险较高" : genre.heat >= 85 ? "热度领先" : "稳健开局"}</b><p>剧本 {scriptScore} · 同档分流 {Math.round(competitionPressure * 100)}% · 档期 ×{slot.boost} · 公司触达 ×{studioReach.toFixed(2)}</p></div>
               {investmentClaimed && <div className="financing-obligation"><span>投</span><div><b>本年度已引入外部投资 ¥{money(annualInvestment)}</b><p>上映后投资方抽取片方34%分账收入的10%，回收上限为 ¥{money(annualInvestment * 1.5)}；剩余收入才进入项目结算。</p></div></div>}
               <div className="ticket-formula"><div><span>内容底盘</span><b>剧本 {scriptScore}</b><small>剧本低于65分时，最终观众评分最高只能达到6.5</small></div><div><span>主创号召</span><b>{Math.round(((director?.appeal ?? 0) + cast.reduce((sum, actor) => sum + actor.appeal, 0)) / 3)}</b><small>演员评级额外提供开画 +{castTierOpeningBonus.toFixed(1)}，但不能替代口碑</small></div><div><span>发行放大</span><b>×{(slot.boost * promo.boost).toFixed(2)}</b><small>高宣发抬升开画，但投入越高边际收益越低</small></div><div><span>同期竞争</span><b>-{Math.round(competitionPressure * 100)}%</b><small>竞品分流开画观众，并持续争夺排片</small></div><div className="studio-factor"><span>制片人基本盘</span><b>×{studioReach.toFixed(2)}</b><small>只强化开画，等级与声望影响会逐日衰减</small></div></div>
               <div className="cost-breakdown"><span>制作与主创 <b>¥{money(totalBeforeRelease)}</b></span><span>完片保险与管理 <b>¥{money(overheadCost)}</b></span><span>宣发及追加 <b>¥{money(currentPromoCost + currentEventCost)}</b></span><strong>总投资 ¥{money(totalCost)}</strong></div>
-              <ActionBar label={`${slot.name} · ${promo.name}`} detail={`总投资 ¥${money(totalCost)} · 同档分流 ${Math.round(competitionPressure * 100)}%`} button="全国上映，揭晓票房" disabled={totalCost > cash} onClick={simulate} back={() => setStage(3)} />
+              <ActionBar label={`${slot.name} · ${promo.name}`} detail={`总投资 ¥${money(totalCost)} · 同档分流 ${Math.round(competitionPressure * 100)}%`} button="全国上映，揭晓票房" disabled={totalCost > cash} onClick={simulate} back={() => moveToStage(3)} />
             </>
           )}
 
-          {stage === 5 && result && (
+          {!utilityRoom && stage === 5 && result && (
             <>
-              <PageHead code={`YEAR ${year} PREMIERE`} title={`《${title}》`} accent="首周上映直播" sub={`${slot.name}上映 · ${genre.name} · ${director?.name}执导`} stamp={revealedDays === 7 ? (result.profit >= 0 ? "盈利" : "失利") : revealedDays === 0 ? "待开画" : `第${revealedDays}天`} />
-              <div className="result-hero"><div><span>{revealedDays === 7 ? "上映30日最终票房" : "当前首周累计"}</span><strong>¥{money(revealedDays === 7 ? result.gross : liveWeekGross)}</strong><p>{revealedDays === 7 ? "首周播报结束 · 第8—30日长尾模型已完成" : `正在更新首周现场 · ${revealedDays}/7 天`}</p></div><div className="score-seal"><b>{latestReport?.audienceScore ?? "--"}</b><span>实时评分</span></div></div>
-              <div className="result-grid"><ResultStat label="成片质量" value={`${result.quality}`} unit="/100" /><ResultStat label={revealedDays === 7 ? "30日观影人次" : "当前观影人次"} value={`${((revealedDays === 7 ? result.audience : liveWeekGross * 10000 / 42) / 10000).toFixed(1)}`} unit="万人" /><ResultStat label="今日票房" value={latestReport ? `¥${money(latestReport.boxOffice)}` : "待公布"} unit="" /><ResultStat label="正向口碑" value={latestReport ? `${latestReport.positiveRate}` : "--"} unit="%" /></div>
-              <SectionTitle number="票" title="上映首周走势" note="单位：万元" />
-              <div className="rollout-controls"><div className="broadcast-status"><i className={autoPlay && revealedDays < 7 ? "live" : ""} /><span><small>首周实时播报</small><b>{revealedDays === 7 ? "七日数据已全部发布" : revealedDays === 0 ? "等待首日票房出炉" : `已更新至上映第 ${revealedDays} 天`}</b></span></div><div className="rollout-buttons"><button onClick={() => setAutoPlay((value) => !value)} disabled={revealedDays >= 7}>{autoPlay ? "暂停播报" : "继续播报"}</button><button onClick={() => { setAutoPlay(false); setRevealedDays((value) => Math.min(7, value + 1)); }} disabled={revealedDays >= 7}>下一天</button><button onClick={() => { setAutoPlay(false); setRevealedDays(7); }} disabled={revealedDays >= 7}>直接看首周</button></div></div>
-              <div className={`trend-summary trend-${revealedDays === 7 ? result.trend : "live"}`}><div><span>{revealedDays === 7 ? "首周走势判定" : "实时走势研判"}</span><b>{liveTrend}</b><p>{liveTrendNote}</p></div><dl><dt>开画能力</dt><dd>{result.openingPower}</dd><dt>同档分流</dt><dd>{Math.round((result.competitionPressure ?? 0) * 100)}%</dd><dt>实时评分</dt><dd>{latestReport?.audienceScore ?? "--"}</dd><dt>评分走势</dt><dd>{latestReport ? `${result.dailyReports[0].audienceScore} → ${latestReport.audienceScore}` : "--"}</dd><dt>正向口碑</dt><dd>{latestReport ? `${latestReport.positiveRate}%` : "--"}</dd></dl></div>
+              <PageHead code={`BOX OFFICE TERMINAL · YEAR ${year}`} title={`《${title}》`} accent="首周实时直播" sub={`${slot.name}上映 · ${genre.name} · ${director?.name}执导`} stamp={revealedDays === 7 ? (result.profit >= 0 ? "盈利" : "失利") : revealedDays === 0 ? "等待信号" : `LIVE · D${revealedDays}`} />
+              <div className="live-broadcast-console">
+                <div className="result-hero"><div><span>{revealedDays === 7 ? "TOTAL 30-DAY BOX OFFICE" : "LIVE WEEK GROSS"}</span><strong>¥{money(revealedDays === 7 ? result.gross : liveWeekGross)}</strong><p>{revealedDays === 7 ? "首周播报结束 · 长尾票房模型已完成" : `院线数据实时接入 · DAY ${revealedDays}/7`}</p></div><div className="score-seal"><b>{latestReport?.audienceScore ?? "--"}</b><span>AUDIENCE</span></div></div>
+                <div className="result-grid"><ResultStat label="成片质量" value={`${result.quality}`} unit="/100" /><ResultStat label={revealedDays === 7 ? "30日观影人次" : "当前观影人次"} value={`${((revealedDays === 7 ? result.audience : liveWeekGross * 10000 / 42) / 10000).toFixed(1)}`} unit="万人" /><ResultStat label="今日票房" value={latestReport ? `¥${money(latestReport.boxOffice)}` : "待公布"} unit="" /><ResultStat label="正向口碑" value={latestReport ? `${latestReport.positiveRate}` : "--"} unit="%" /></div>
+              </div>
+              <div className="rollout-controls"><div className="broadcast-status"><i className={autoPlay && revealedDays < 7 ? "live" : ""} /><span><small>LIVE DATA STREAM</small><b>{revealedDays === 7 ? "七日数据已全部发布" : revealedDays === 0 ? "等待首日票房出炉" : `第 ${revealedDays} 天票房与舆情已同步`}</b></span></div><div className="rollout-buttons"><button onClick={() => setAutoPlay((value) => !value)} disabled={revealedDays >= 7}>{autoPlay ? "暂停直播" : "继续直播"}</button><button onClick={() => { setAutoPlay(false); setRevealedDays((value) => Math.min(7, value + 1)); }} disabled={revealedDays >= 7}>下一天</button><button onClick={() => { setAutoPlay(false); setRevealedDays(7); }} disabled={revealedDays >= 7}>快进首周</button></div></div>
+              <div className="live-feed-terminal" ref={liveFeedRef} aria-live="polite">
+                <div className="live-feed-head"><div><i className={autoPlay && revealedDays < 7 ? "live" : ""} /><span>SOCIAL PULSE</span></div><b>影院散场与全网舆情</b><em>{revealedDays ? `DAY ${String(revealedDays).padStart(2, "0")}` : "STANDBY"}</em></div>
+                <div className="daily-feed">
+                  {revealedDays === 0 && <div className="feed-waiting"><i>票</i><div><b>首映场正在进行</b><p>系统将自动推送每日票房、散场反馈与网络热议。</p></div></div>}
+                  {!!visibleReports.length && <div className="feed-track" key={revealedDays}>{visibleReports.map((report, index) => <article className={`daily-report ${index === visibleReports.length - 1 ? "latest" : "previous"}`} key={report.day}><div className="report-day"><span>DAY</span><b>{String(report.day).padStart(2, "0")}</b><small>{report.momentum}</small></div><div className="report-main"><header><div><span>单日票房</span><b>¥{money(report.boxOffice)}</b><i className={report.change !== null && report.change >= 0 ? "up" : "down"}>{report.change === null ? "首映日" : `环比 ${report.change >= 0 ? "+" : ""}${report.change}%`}</i></div><div><span>观众评分</span><b>{report.audienceScore}</b><small>正向 {report.positiveRate}%</small></div></header><h3>{report.headline}</h3><div className="reaction-grid"><div><span>散场声音</span><p>{report.audienceReaction}</p></div><div><span>网络舆情</span><p>{report.internetReaction}</p><b>{report.hotTopic}</b></div></div></div></article>)}</div>}
+                </div>
+              </div>
+              <SectionTitle number="DATA" title="首周票房曲线" note="单位：万元" />
+              <div className={`trend-summary trend-${revealedDays === 7 ? result.trend : "live"}`}><div><span>{revealedDays === 7 ? "首周走势判定" : "AI 实时走势研判"}</span><b>{liveTrend}</b><p>{liveTrendNote}</p></div><dl><dt>开画能力</dt><dd>{result.openingPower}</dd><dt>同档分流</dt><dd>{Math.round((result.competitionPressure ?? 0) * 100)}%</dd><dt>实时评分</dt><dd>{latestReport?.audienceScore ?? "--"}</dd><dt>评分走势</dt><dd>{latestReport ? `${result.dailyReports[0].audienceScore} → ${latestReport.audienceScore}` : "--"}</dd><dt>正向口碑</dt><dd>{latestReport ? `${latestReport.positiveRate}%` : "--"}</dd></dl></div>
               <div className="score-model-note"><span>评分驱动票房</span><p>剧本、导演、表演与成片质量决定最终评分；宣发和明星号召只负责开画。每日新评分与同期竞品会共同改变次日购票及排片留存。</p></div>
               <div className="box-office-chart">{result.dailyReports.map((report, index) => { const isRevealed = index < revealedDays; return <div key={report.day} className={!isRevealed ? "pending-day" : report.change !== null && report.change >= 0 ? "rising" : "falling"}><b>{isRevealed ? money(report.boxOffice) : "待公布"}</b><em>{isRevealed ? report.change === null ? "首日" : `${report.change >= 0 ? "+" : ""}${report.change}%` : "—"}</em><span style={{ height: isRevealed ? `${32 + report.boxOffice / Math.max(...result.days) * 100}px` : "14px" }} /><small>第{report.day}天</small></div>; })}</div>
-              <div className="daily-feed">
-                {revealedReports.map((report, index) => <article className={`daily-report ${index === revealedReports.length - 1 ? "latest" : ""}`} key={report.day}><div className="report-day"><span>DAY</span><b>{String(report.day).padStart(2, "0")}</b><small>{report.momentum}</small></div><div className="report-main"><header><div><span>单日票房</span><b>¥{money(report.boxOffice)}</b><i className={report.change !== null && report.change >= 0 ? "up" : "down"}>{report.change === null ? "首映日" : `环比 ${report.change >= 0 ? "+" : ""}${report.change}%`}</i></div><div><span>观众评分</span><b>{report.audienceScore}</b><small>正向评价 {report.positiveRate}%</small></div></header><h3>{report.headline}</h3><div className="reaction-grid"><div><span>散场声音</span><p>{report.audienceReaction}</p></div><div><span>网络舆情</span><p>{report.internetReaction}</p><b>{report.hotTopic}</b></div></div></div></article>)}
-                {revealedDays === 0 && <div className="feed-waiting"><i>票</i><div><b>首映场正在进行</b><p>首日票房、第一批观众的散场反馈与网络热议即将公布。</p></div></div>}
-              </div>
               {revealedDays === 7 && <>
                 <SectionTitle number="30" title="上映月最终结算" note="后台逐日测算第 1—30 天" />
                 <div className="month-settlement"><div><small>首周累计</small><b>¥{money(result.weekGross)}</b><span>直播展示的第 1—7 天</span></div><i>+</i><div><small>长尾票房</small><b>¥{money(result.tailGross)}</b><span>口碑、竞品与周末效应测算第 8—30 天</span></div><i>=</i><div className="month-total"><small>30日最终票房</small><b>¥{money(result.gross)}</b><span>片方回款 ¥{money(result.studioRevenue)}{result.investorShare ? ` · 投资方分成 ¥${money(result.investorShare)}` : ""} · 回本线 ¥{money(result.breakEvenGross)}{result.successBonus ? ` · 税费与主创分成 ¥${money(result.successBonus)}` : ""}</span></div></div>
@@ -928,9 +1070,9 @@ export default function Home() {
             </>
           )}
 
-          {stage === 6 && result && (
+          {(utilityRoom === "agency" || (stage === 6 && result)) && (
             <>
-              <PageHead code="STUDIO AGENCY" title="把一次成功，变成" accent="长期的明星资产。" sub="签约、培养并经营旗下艺人；高频使用会逐步收回前期投入。" stamp={`经纪部 ${signedTalents.length}/${rosterCapacity}`} />
+              <PageHead code="TALENT OPERATIONS TERMINAL" title="把一次成功，变成" accent="长期的明星资产。" sub="签约、培养并经营旗下艺人；高频使用会逐步收回前期投入。" stamp={`ROSTER ${signedTalents.length}/${rosterCapacity}`} />
               <div className="agency-overview">
                 <div><span>签约容量</span><b>{signedTalents.length}<small>/{rosterCapacity} 人</small></b><p>Lv.{studioLevel} 经纪部 · {studioLevel < 10 ? `Lv.${Math.min(10, studioLevel + (studioLevel % 2 === 0 ? 1 : 2))} 再扩容` : "已达最高容量"}</p></div>
                 <div><span>年度培训</span><b>{usedTrainingSlots}<small>/{yearlyTrainingCapacity} 次</small></b><p>每位艺人每年限训一次</p></div>
@@ -960,7 +1102,7 @@ export default function Home() {
                   const appealTrainingGain = trainingGain(actor.appeal, contract);
                   const renewal = talentRenewalQuote({ ...actor, fee: settledFee }, contract);
                   return <article className="owned-talent" key={actor.id}>
-                    <header><span className="avatar">{actor.avatar}</span><div><b>{actor.name}{actorHonorTitle(actor, actorHonors) ? ` · ${actorHonorTitle(actor, actorHonors)}` : ""}</b><small>{profile.tier}级 · 综合 {actor.acting + actor.appeal} · {contract.origin === "rookie" ? "自社培养" : "成熟艺人"} · {actorAge(actor, year, contract)}岁</small></div><i>{retirementAge(actor.id)}岁退休 · 合约至第 {contract.contractEndYear} 年</i></header>
+                    <header><PortraitAvatar person={actor} group={contract.origin === "rookie" ? "rookie" : "actor"} /><div><b>{actor.name}{actorHonorTitle(actor, actorHonors) ? ` · ${actorHonorTitle(actor, actorHonors)}` : ""}</b><small>{profile.tier}级 · 综合 {actor.acting + actor.appeal} · {contract.origin === "rookie" ? "自社培养" : "成熟艺人"} · {actorAge(actor, year, contract)}岁</small></div><i>{retirementAge(actor.id)}岁退休 · 合约至第 {contract.contractEndYear} 年</i></header>
                     <div className="owned-stats"><span>演技 <b>{actor.acting}</b></span><span>号召 <b>{actor.appeal}</b></span><span>潜力 <b>{contract.potential}</b></span><span>忠诚 <b>{contract.loyalty}</b></span></div>
                     <div className="owned-economy"><div><span>自制片内部价</span><b>¥{money(internalFee)}</b><small>市场价 ¥{money(settledFee * TALENT_COST_SCALE)} · 内部率 {Math.round(contract.internalRate * 100)}%{settledFee > actor.fee ? " · 本片后上调" : ""}</small></div><div><span>闲置年预计分成</span><b>¥{money(outsideIncome)}</b><small>公司抽成 {Math.round(contract.agencyShare * 100)}%</small></div><div><span>固定年薪</span><b>¥{money(contract.annualSalary)}</b><small>{contract.origin === "rookie" ? `累计主演 ${(contract.filmCredits ?? 0) + (cast.some((item) => item.id === actor.id) ? 1 : 0)} 部` : "下一年度自动结算"}</small></div></div>
                     <div className="genre-chips">{actor.genres.map((item) => <span key={item}>{item}</span>)}{Object.entries(contract.genreProgress).filter(([item, progress]) => !actor.genres.includes(item) && progress > 0).map(([item, progress]) => <span className="learning" key={item}>{item} {Math.min(99, progress)}%</span>)}</div>
@@ -978,7 +1120,7 @@ export default function Home() {
                   const quote = matureContractQuote(actor, profile);
                   const firstPayment = quote.signingFee + quote.annualSalary;
                   const unavailable = signedTalents.length >= rosterCapacity || cash < firstPayment || reputation < quote.requiredReputation;
-                  return <article className="signing-card" key={actor.id}><header><span className="avatar">{actor.avatar}</span><div><b>{actor.name}{actorHonorTitle(actor, actorHonors) ? ` · ${actorHonorTitle(actor, actorHonors)}` : ""}</b><small>{profile.tier}级 · 综合 {actor.acting + actor.appeal} · {actor.tag}</small></div><i>{profile.age + year - 1}岁 · {careerStage(profile, profile.age + year - 1)}</i></header><div className="signing-stats"><span>演技 <b>{actor.acting}</b></span><span>号召 <b>{actor.appeal}</b></span><span>当前身价 <b>¥{money(actor.fee * TALENT_COST_SCALE)}</b></span></div><p>{actor.genres.join(" · ")} · 预计 {retirementAge(actor.id)} 岁退休</p><div className="contract-price"><span>签约费 ¥{money(quote.signingFee)}</span><span>年薪 ¥{money(quote.annualSalary)}</span><b>首期 ¥{money(firstPayment)}</b></div><button disabled={unavailable} onClick={() => setSigningTarget({ actor, origin: "mature" })}>{signedTalents.length >= rosterCapacity ? "签约名额已满" : reputation < quote.requiredReputation ? `需要声望 ${quote.requiredReputation}` : cash < firstPayment ? "公司资金不足" : "查看三年合约"}</button></article>;
+                  return <article className="signing-card" key={actor.id}><header><PortraitAvatar person={actor} group="actor" /><div><b>{actor.name}{actorHonorTitle(actor, actorHonors) ? ` · ${actorHonorTitle(actor, actorHonors)}` : ""}</b><small>{profile.tier}级 · 综合 {actor.acting + actor.appeal} · {actor.tag}</small></div><i>{profile.age + year - 1}岁 · {careerStage(profile, profile.age + year - 1)}</i></header><div className="signing-stats"><span>演技 <b>{actor.acting}</b></span><span>号召 <b>{actor.appeal}</b></span><span>当前身价 <b>¥{money(actor.fee * TALENT_COST_SCALE)}</b></span></div><p>{actor.genres.join(" · ")} · 预计 {retirementAge(actor.id)} 岁退休</p><div className="contract-price"><span>签约费 ¥{money(quote.signingFee)}</span><span>年薪 ¥{money(quote.annualSalary)}</span><b>首期 ¥{money(firstPayment)}</b></div><button disabled={unavailable} onClick={() => setSigningTarget({ actor, origin: "mature" })}>{signedTalents.length >= rosterCapacity ? "签约名额已满" : reputation < quote.requiredReputation ? `需要声望 ${quote.requiredReputation}` : cash < firstPayment ? "公司资金不足" : "查看三年合约"}</button></article>;
                 })}</div>
               </div>}
 
@@ -989,21 +1131,35 @@ export default function Home() {
                   const quote = rookieContractQuote(actor);
                   const firstPayment = quote.signingFee + quote.annualSalary;
                   const unavailable = signedTalents.length >= rosterCapacity || cash < firstPayment;
-                  return <article className="signing-card rookie-card" key={actor.id}><header><span className="avatar">{actor.avatar}</span><div><b>{actor.name}</b><small>{actorTier(actor.acting, actor.appeal)}级 · 综合 {actor.acting + actor.appeal} · {actor.tag}</small></div><i>{actor.profile.age}岁</i></header><div className="signing-stats"><span>演技 <b>{actor.acting}</b></span><span>号召 <b>{actor.appeal}</b></span><span>潜力 <b>{actor.potential}</b></span></div><p>{actor.genres.join(" · ")} · 成长速度 +{actor.growth}</p><div className="contract-price"><span>签约费 ¥{money(quote.signingFee)}</span><span>年薪 ¥{money(quote.annualSalary)}</span><b>首期 ¥{money(firstPayment)}</b></div><button disabled={unavailable} onClick={() => setSigningTarget({ actor, rookie: actor, origin: "rookie" })}>{signedTalents.length >= rosterCapacity ? "签约名额已满" : cash < firstPayment ? "公司资金不足" : "纳入新人计划"}</button></article>;
+                  return <article className="signing-card rookie-card" key={actor.id}><header><PortraitAvatar person={actor} group="rookie" /><div><b>{actor.name}</b><small>{actorTier(actor.acting, actor.appeal)}级 · 综合 {actor.acting + actor.appeal} · {actor.tag}</small></div><i>{actor.profile.age}岁</i></header><div className="signing-stats"><span>演技 <b>{actor.acting}</b></span><span>号召 <b>{actor.appeal}</b></span><span>潜力 <b>{actor.potential}</b></span></div><p>{actor.genres.join(" · ")} · 成长速度 +{actor.growth}</p><div className="contract-price"><span>签约费 ¥{money(quote.signingFee)}</span><span>年薪 ¥{money(quote.annualSalary)}</span><b>首期 ¥{money(firstPayment)}</b></div><button disabled={unavailable} onClick={() => setSigningTarget({ actor, rookie: actor, origin: "rookie" })}>{signedTalents.length >= rosterCapacity ? "签约名额已满" : cash < firstPayment ? "公司资金不足" : "纳入新人计划"}</button></article>;
                 })}</div>
               </div>}
               <div className="company-danger-zone"><div><span>重新开始</span><b>解散公司并建立全新存档</b><p>将清除资金、等级、电影历史、旗下艺人及全部培养进度。</p></div><button onClick={() => setShowResetConfirm(true)}>解散公司</button></div>
-              <ActionBar label={`经纪部 ${signedTalents.length}/${rosterCapacity} · 年薪 ¥${money(annualPayroll)}`} detail="参演者仍有代言分成，未参演者还会承接外部片约" button={`完成经营，进入第 ${year + 1} 年`} disabled={false} onClick={nextYear} back={() => setStage(5)} />
+              <ActionBar label={`经纪部 ${signedTalents.length}/${rosterCapacity} · 年薪 ¥${money(annualPayroll)}`} detail={utilityRoom === "agency" ? `电影主线仍停留在「${stageLabels[stage]}」` : "完成年度经营后进入下一制片年"} button={utilityRoom === "agency" ? "返回主片场" : `完成经营，进入第 ${year + 1} 年`} disabled={false} onClick={utilityRoom === "agency" ? returnToHub : nextYear} back={utilityRoom === "agency" ? undefined : () => moveToStage(5)} />
             </>
           )}
         </section>
       </div>
+      </div>}
+      </>}
+      {showFinance && <div className="modal-backdrop finance-backdrop">
+        <button className="modal-dismiss" type="button" aria-label="关闭融资中心" onClick={() => setShowFinance(false)} />
+        <section className="contract-modal finance-modal" role="dialog" aria-modal="true" aria-label="片场融资中心">
+          <button className="modal-close" onClick={() => setShowFinance(false)} aria-label="关闭融资中心">×</button>
+          <p className="eyebrow accent">CAPITAL ACCESS TERMINAL</p>
+          <div className="finance-seal">投</div>
+          <h2>第 {year} 制片年融资中心</h2>
+          <p>{investmentLocked ? "融资渠道已经设置在主片场；完成首部电影后，第二制片年起可正式引入外部投资。" : investmentClaimed ? `本年度 ¥${money(annualInvestment)} 投资已经到账。` : `本年度可引入 ¥${money(annualInvestment)} 外部投资，不会改变当前电影制作阶段。`}</p>
+          <div className="finance-terms"><span>投资方分成 <b>片方回款的10%</b></span><span>最高回收 <b>{investmentLocked ? "第2年公布" : `¥${money(annualInvestment * 1.5)}`}</b></span><span>领取限制 <b>每个制片年一次</b></span></div>
+          <button className="finance-claim" type="button" disabled={investmentLocked || investmentClaimed} onClick={() => { claimAnnualInvestment(); setShowFinance(false); }}>{investmentLocked ? "第2制片年解锁融资" : investmentClaimed ? "本年度融资已完成" : `确认融资 +¥${money(annualInvestment)}`}</button>
+        </section>
+      </div>}
       {negotiating && negotiatingProfile && <div className="modal-backdrop">
         <button className="modal-dismiss" type="button" aria-label="关闭演员谈判" onClick={() => setNegotiating(null)} />
         <section className="contract-modal" role="dialog" aria-modal="true" aria-label={`与${negotiating.name}洽谈片约`}>
           <button className="modal-close" onClick={() => setNegotiating(null)} aria-label="关闭谈判">×</button>
           <p className="eyebrow accent">CONTRACT TALK</p>
-          <div className="contract-head"><span className="avatar large">{negotiating.avatar}</span><div><h2>邀请 {negotiating.name}</h2><p>{negotiatingProfile.tier}级艺人 · {negotiatingProfile.age + year - 1}岁 · {careerStage(negotiatingProfile, negotiatingProfile.age + year - 1)}</p></div></div>
+          <div className="contract-head"><PortraitAvatar person={negotiating} group={negotiating.id >= 100 ? "rookie" : "actor"} large /><div><h2>邀请 {negotiating.name}</h2><p>{negotiatingProfile.tier}级艺人 · {negotiatingProfile.age + year - 1}岁 · {careerStage(negotiatingProfile, negotiatingProfile.age + year - 1)}</p></div></div>
           <div className="contract-intel"><span>综合评级 <b>{negotiatingProfile.tier} · {negotiating.acting + negotiating.appeal}</b></span><span>职业荣誉 <b>{actorHonorTitle(negotiating, actorHonors) ?? "尚无表演称号"}</b></span><span>角色路线 <b>{negotiatingProfile.archetype}</b></span><span>当前档期 <b>{negotiatingProfile.availability}</b></span><span>舆情风险 <b>{negotiatingProfile.risk}%</b></span><span>题材适配 <b>{negotiating.genres.includes(genre.name) ? "高度匹配" : "跨类型挑战"}</b></span><span>剧本评分 <b>{scriptScore} 分</b></span><span>接戏门槛 <b>{scriptThreshold(negotiatingProfile)} 分</b></span></div>
           <div className={`actor-interest-panel ${scriptScore >= scriptThreshold(negotiatingProfile) + 8 ? "hot" : scriptScore < scriptThreshold(negotiatingProfile) ? "cold" : ""}`}><span>演员读本反馈</span><b>{scriptScore < scriptThreshold(negotiatingProfile) - 14 ? "经纪团队暂不接受邀约" : scriptScore >= scriptThreshold(negotiatingProfile) + 8 ? "非常喜欢这个角色，愿意降低片酬" : scriptScore >= scriptThreshold(negotiatingProfile) ? "剧本达到预期，可以正常洽谈" : "剧本吸引力不足，需要提高报价"}</b></div>
           <h3>选择报价策略</h3>
@@ -1017,7 +1173,7 @@ export default function Home() {
         <section className="contract-modal agency-contract-modal" role="dialog" aria-modal="true" aria-label={`签约${signingTarget.actor.name}`}>
           <button className="modal-close" onClick={() => setSigningTarget(null)} aria-label="取消签约">×</button>
           <p className="eyebrow accent">AGENCY CONTRACT · THREE YEARS</p>
-          <div className="contract-head"><span className="avatar large">{signingTarget.actor.avatar}</span><div><h2>签约 {signingTarget.actor.name}</h2><p>{signingTarget.origin === "rookie" ? "新人培养合约" : `${signingTargetProfile.tier}级成熟艺人合约`} · 第 {year + 1}—{year + 3} 制片年</p></div></div>
+          <div className="contract-head"><PortraitAvatar person={signingTarget.actor} group={signingTarget.origin === "rookie" ? "rookie" : "actor"} large /><div><h2>签约 {signingTarget.actor.name}</h2><p>{signingTarget.origin === "rookie" ? "新人培养合约" : `${signingTargetProfile.tier}级成熟艺人合约`} · 第 {year + 1}—{year + 3} 制片年</p></div></div>
           <div className="agency-contract-summary"><div><span>签约费</span><b>¥{money(activeSigningQuote.signingFee)}</b></div><div><span>首年固定薪资</span><b>¥{money(activeSigningQuote.annualSalary)}</b></div><div className="contract-total"><span>本次支付</span><b>¥{money(activeSigningQuote.signingFee + activeSigningQuote.annualSalary)}</b></div></div>
           <div className="contract-intel"><span>实时评级 <b>{signingTargetProfile.tier} · 综合 {signingTarget.actor.acting + signingTarget.actor.appeal}</b></span><span>签约声望 <b>{activeSigningQuote.requiredReputation}</b></span><span>自制片项目价 <b>市场报价的 {Math.round(activeSigningQuote.internalRate * 100)}%</b></span><span>外部工作抽成 <b>{Math.round(activeSigningQuote.agencyShare * 100)}%</b></span><span>初始忠诚度 <b>{signingTarget.origin === "rookie" ? 82 : 70}</b></span><span>签约后名额 <b>{signedTalents.length + 1}/{rosterCapacity}</b></span></div>
           <div className="contract-payback"><span>经营提示</span><p>{signingTarget.origin === "rookie" ? "新人短期不会带来明显票房，需要持续培训与参演机会；成长后内部成本优势会逐年扩大。" : "成熟艺人连续用于两至三部自制电影，通常能通过内部片酬差额和闲置年度分成收回签约投入。"}</p></div>
@@ -1041,8 +1197,32 @@ export default function Home() {
   );
 }
 
+function PortraitAvatar({ person, group, large = false, mini = false }: { person: { id: number; name: string; avatar: string }; group: PortraitGroup; large?: boolean; mini?: boolean }) {
+  const actorIsFemale = group === "actor" && person.id > 12;
+  const atlas = group === "director"
+    ? "/images/portraits/directors-anime-atlas-v1.jpg"
+    : group === "rookie"
+      ? "/images/portraits/rookies-anime-atlas-v2.jpg"
+      : actorIsFemale
+        ? "/images/portraits/female-actors-anime-atlas-v1.jpg"
+        : "/images/portraits/male-actors-anime-atlas-v1.jpg";
+  const index = group === "director" ? person.id - 1 : group === "rookie" ? person.id - 101 : actorIsFemale ? person.id - 13 : person.id - 1;
+  const column = index % 4;
+  const row = Math.floor(index / 4);
+  return <span
+    className={`avatar portrait-avatar ${large ? "large" : ""} ${mini ? "mini" : ""}`}
+    role="img"
+    aria-label={`${person.name}动漫头像`}
+    title={person.name}
+    style={{
+      backgroundImage: `url(${atlas})`,
+      backgroundPosition: `${column * 100 / 3}% ${row * 50}%`,
+    }}
+  />;
+}
+
 function CompetitorCard({ movie }: { movie: CompetitorMovie }) {
-  return <article className={`competitor-card tier-${movie.tier.toLowerCase()}`}><header><span>{movie.tier}</span><div><b>《{movie.title}》</b><small>{movie.genre}</small></div><i>威胁 {movie.strength}</i></header><div className="competitor-cast">{movie.cast.map((actor) => <span key={actor.id}><i>{actor.name.slice(0, 1)}</i><b>{actor.name}</b><small>{actor.tier}级 · 号召 {actor.appeal}</small></span>)}</div><p>预计分流本档期观众 {Math.round(movie.audienceDrain * 100)}%</p></article>;
+  return <article className={`competitor-card tier-${movie.tier.toLowerCase()}`}><header><span>{movie.tier}</span><div><b>《{movie.title}》</b><small>{movie.genre}</small></div><i>威胁 {movie.strength}</i></header><div className="competitor-cast">{movie.cast.map((actor) => <span key={actor.id}><PortraitAvatar person={{ ...actor, avatar: actor.name.slice(0, 1) }} group={actor.id >= 100 ? "rookie" : "actor"} mini /><b>{actor.name}</b><small>{actor.tier}级 · 号召 {actor.appeal}</small></span>)}</div><p>预计分流本档期观众 {Math.round(movie.audienceDrain * 100)}%</p></article>;
 }
 
 function TalentCard({ person, selected, onClick, year, deal, scriptScore = 100, ownedContract, honorTitle }: { person: Director | Actor; selected: boolean; onClick: () => void; year: number; deal?: Deal; scriptScore?: number; ownedContract?: TalentContract; honorTitle?: string | null }) {
@@ -1053,7 +1233,7 @@ function TalentCard({ person, selected, onClick, year, deal, scriptScore = 100, 
   const locked = !isDirector && !ownedContract && scriptScore < threshold - 14;
   const interest = ownedContract ? "旗下艺人 · 档期优先" : locked ? "暂不读本" : scriptScore >= threshold + 8 ? "强烈兴趣" : scriptScore >= threshold ? "愿意洽谈" : "需要溢价";
   return <button className={`talent-card ${selected ? "selected" : ""} ${locked ? "unavailable" : ""}`} onClick={onClick} aria-pressed={selected}>
-    <span className="avatar">{person.avatar}</span><div><strong>{person.name}</strong><small>{isDirector ? person.trait : person.tag}</small></div>
+    <PortraitAvatar person={person} group={isDirector ? "director" : "actor"} /><div><strong>{person.name}</strong><small>{isDirector ? person.trait : person.tag}</small></div>
     {isDirector && <div className={`director-momentum ${(person.momentum ?? 0) > 0 ? "up" : (person.momentum ?? 0) < 0 ? "down" : ""}`}><span>{person.marketNote ?? "本年度档期可约"}</span><b>{person.momentum === undefined ? "NEW" : `${person.momentum >= 0 ? "+" : ""}${person.momentum}`}</b></div>}
     {!isDirector && profile && <div className="profile-badges"><i className={`tier tier-${profile.tier.toLowerCase()}`}>{profile.tier}</i><span>综合 {person.acting + person.appeal}</span>{honorTitle && <span className="honor-title">{honorTitle}</span>}<span>{currentAge}岁</span><span className={`career career-${profile.career}`}>{careerStage(profile, currentAge)}</span><span>{retirementAge(person.id)}岁退休</span></div>}
     {!isDirector && <div className={`script-interest ${ownedContract ? "owned" : locked ? "locked" : scriptScore >= threshold + 8 ? "hot" : ""}`}><span>{ownedContract ? `内部价 ${Math.round(ownedContract.internalRate * 100)}%` : `剧本门槛 ${threshold}`}</span><b>{interest}</b></div>}

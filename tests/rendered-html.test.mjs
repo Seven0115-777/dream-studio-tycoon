@@ -23,7 +23,7 @@ async function render(path = "/") {
   );
 }
 
-test("server-renders the mobile movie studio game", async () => {
+test("server-renders the visual movie studio hub", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -34,7 +34,8 @@ test("server-renders the mobile movie studio game", async () => {
   assert.match(html, /name="viewport" content="width=device-width, initial-scale=1"/i);
   assert.match(html, /class="game-header"/);
   assert.match(html, /class="stage-progress"/);
-  assert.match(html, /class="action-bar"/);
+  assert.match(html, /class="studio-hub"/);
+  assert.match(html, /电影筹备室/);
   assert.match(html, /电影制作进度/);
   assert.match(html, /制片人/);
   assert.doesNotMatch(html, /Your site is taking shape|Building your site/);
@@ -61,18 +62,40 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /作为银幕新面孔意外出圈/);
   assert.match(page, /导演调度受到质疑/);
   assert.match(page, /也救不了薄弱成片/);
-  assert.match(page, /年度拉投资广告位/);
+  assert.match(page, /片场融资中心/);
   assert.match(page, /setCash\(\(value\) => value \+ annualInvestment\)/);
   assert.match(page, /investmentClaimedYear === year/);
-  assert.match(page, /融资渠道将在第二年开放/);
-  assert.match(page, /额度每两个制片年提高/);
-  assert.match(page, /投资方抽取片方分账10%/);
+  assert.match(page, /第二制片年起可正式引入外部投资/);
+  assert.match(page, /每个制片年一次/);
+  assert.match(page, /片方回款的10%/);
   assert.match(page, /投资方分成/);
   assert.doesNotMatch(page, /查看完整题库与所有答案分值/);
   assert.doesNotMatch(page, /className="option-score"/);
   assert.match(page, /结算权重 \+20 XP \/ \+12 声望/);
   assert.match(page, /dream-studio-save-v1/);
   assert.match(page, /进入公司经营期/);
+  assert.match(page, /确认交稿/);
+  assert.match(page, /确认评分，前往选角/);
+  assert.match(css, /filming-clapperboard-mobile-v1\.png/);
+  assert.match(css, /premiere-cinema-full-mobile-v2\.png/);
+  assert.match(page, /BOX OFFICE TERMINAL/);
+  assert.match(page, /SOCIAL PULSE/);
+  assert.match(page, /PROJECT CONTROL/);
+  assert.match(page, /CASTING DATABASE/);
+  assert.match(page, /TALENT OPERATIONS TERMINAL/);
+  assert.match(page, /CAPITAL ACCESS TERMINAL/);
+  assert.match(css, /@keyframes feed-rise/);
+  assert.match(css, /premiere-live-screen \.awards-row/);
+  assert.match(page, /directors-anime-atlas-v1\.jpg/);
+  assert.match(page, /male-actors-anime-atlas-v1\.jpg/);
+  assert.match(page, /female-actors-anime-atlas-v1\.jpg/);
+  assert.match(page, /rookies-anime-atlas-v2\.jpg/);
+  assert.match(page, /动漫头像/);
+  assert.match(css, /\.talent-card\.selected \.avatar, \.avatar\.large \{ background-color:/);
+  assert.match(css, /\.operation-casting \.talent-card\.selected \.avatar \{ background-color:/);
+  assert.match(page, /PRODUCTION MONITOR/);
+  assert.match(page, /现场制片/);
+  assert.match(page, /电影海报已移交发行团队/);
   assert.match(page, /旗下艺人内部价/);
   assert.match(page, /解散公司并建立全新存档/);
   assert.match(page, /评分驱动票房/);
