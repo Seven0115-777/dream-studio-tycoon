@@ -543,6 +543,18 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
 .signing-card > button:disabled { opacity: .35; cursor: not-allowed; }
 .rookie-card { border-color: #bfd9ce; }
 .rookie-card > button { background: var(--teal); }
+.rookie-refresh-bar { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; margin: 0 0 12px; padding: 12px 13px; border: 1px solid #bfd9ce; border-radius: 14px; background: linear-gradient(135deg, #e2f0eb, #f5f8f3); }
+.rookie-refresh-bar span, .rookie-refresh-bar b, .rookie-refresh-bar small { display: block; }
+.rookie-refresh-bar span { color: var(--teal); font-size: 7px; font-weight: 900; letter-spacing: .1em; }
+.rookie-refresh-bar b { margin-top: 4px; font-size: 10px; }
+.rookie-refresh-bar small { max-width: 420px; margin-top: 4px; color: var(--muted); font-size: 7px; line-height: 1.45; }
+.rookie-refresh-bar button { min-width: 112px; min-height: 46px; padding: 0 13px; border: 0; border-radius: 12px; background: var(--teal); color: white; font-size: 8px; font-weight: 900; cursor: pointer; }
+.rookie-refresh-bar button:disabled { background: #a8b4b0; cursor: not-allowed; }
+.rookie-rarity { display: block; margin-bottom: 4px; padding: 3px 6px; border-radius: 999px; background: rgba(45,125,111,.12); color: var(--teal); font-size: 7px; letter-spacing: .04em; }
+.rookie-card.rarity-gold { border-color: #d5aa42; box-shadow: 0 0 0 1px rgba(213,170,66,.2), 0 10px 28px rgba(150,105,22,.12); }
+.rookie-card.rarity-gold .rookie-rarity { background: #f3df9b; color: #6f4a00; }
+.rookie-card.rarity-red { border-color: #df5b4e; box-shadow: 0 0 0 1px rgba(223,91,78,.22), 0 10px 30px rgba(166,40,32,.15); }
+.rookie-card.rarity-red .rookie-rarity { background: #f3b1a9; color: #7d1812; }
 .script-interest.owned { background: var(--teal-soft); color: var(--teal); }
 .agency-contract-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin: 14px 0; }
 .agency-contract-summary > div { padding: 10px; border-radius: 12px; background: var(--surface-soft); }
@@ -831,11 +843,21 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
 .operation-agency .company-notice span { border-radius: 2px; background: #2c8394; }
 .operation-agency .agency-explainer, .operation-agency .agency-explainer.rookie { border: 1px solid rgba(89,177,193,.16); border-radius: 4px; background: rgba(8,26,34,.84); }
 .operation-agency .agency-explainer p { color: #6d8e95; }
+.operation-agency .rookie-refresh-bar { border-color: rgba(77,197,213,.25); border-radius: 4px; background: linear-gradient(135deg, rgba(8,30,40,.94), rgba(13,51,59,.88)); }
+.operation-agency .rookie-refresh-bar b { color: #dcebed; }
+.operation-agency .rookie-refresh-bar small { color: #71939a; }
+.operation-agency .rookie-refresh-bar button { border: 1px solid rgba(91,210,220,.4); border-radius: 3px; background: rgba(32,123,135,.65); color: #baf4f4; }
+.operation-agency .rookie-refresh-bar button:disabled { border-color: rgba(113,139,144,.18); background: rgba(51,67,71,.55); color: #6f8589; }
 .operation-agency .agency-empty { border-color: rgba(91,181,197,.22); border-radius: 5px; }
 .operation-agency .agency-empty > span { border: 1px solid rgba(85,185,201,.28); border-radius: 3px; background: rgba(42,125,140,.16); color: #75cedb; }
 .operation-agency .agency-empty p { color: #6f9097; }
 .operation-agency .agency-empty button { border-radius: 3px; background: #e86243; }
 .operation-agency .owned-talent, .operation-agency .signing-card { border-color: rgba(89,174,189,.18); border-radius: 5px; background: rgba(8,25,33,.92); color: #dcebed; box-shadow: none; }
+.operation-agency .rookie-card.rarity-gold { border-color: rgba(228,180,66,.82); box-shadow: inset 0 0 24px rgba(210,156,34,.08), 0 0 15px rgba(210,156,34,.12); }
+.operation-agency .rookie-card.rarity-red { border-color: rgba(245,81,68,.88); box-shadow: inset 0 0 26px rgba(208,48,42,.1), 0 0 18px rgba(208,48,42,.15); }
+.operation-agency .rookie-rarity { background: rgba(58,145,151,.18); color: #8ddbe1; }
+.operation-agency .rookie-card.rarity-gold .rookie-rarity { background: rgba(198,146,33,.18); color: #f3c95f; }
+.operation-agency .rookie-card.rarity-red .rookie-rarity { background: rgba(208,58,48,.2); color: #ff887d; }
 .operation-agency .owned-talent > header, .operation-agency .signing-card > header { border-color: rgba(89,172,188,.15); }
 .operation-agency .avatar { border: 1px solid rgba(89,180,196,.2); border-radius: 3px; background-color: rgba(43,103,114,.17); color: #88c9d4; }
 .operation-agency .owned-talent header > div small, .operation-agency .signing-card header > div small, .operation-agency .signing-card > p { color: #698b92; }
@@ -1090,6 +1112,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
   .genre-training { gap: 8px; }
   .genre-training select { min-height: 54px; padding: 0 11px; font-size: 11px; }
   .operation-agency .owned-talent header > div small, .operation-agency .owned-economy span, .operation-agency .owned-economy small, .operation-agency .training-panel small, .operation-agency .training-buttons small { color: #82a5ac; }
+  .rookie-refresh-bar { grid-template-columns: 1fr; }
+  .rookie-refresh-bar button { width: 100%; min-height: 50px; font-size: 10px; }
+  .rookie-refresh-bar b { font-size: 12px; }
+  .rookie-refresh-bar small { font-size: 9px; }
+  .rookie-card > header { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .rookie-card .rookie-rarity { font-size: 8px; }
 }
 
 @media (hover: hover) and (pointer: fine) {
