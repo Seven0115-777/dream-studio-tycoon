@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionBar, GameHeader, Metric, ResultStat, ScreenHead as PageHead, SectionTitle, StageProgress } from "./components/mobile-ui";
 import { calculateCompetitionPressure, generateCompetitors, type CompetitorMovie } from "./competition-system";
-import { annualInvestmentAmount, buildContentModel, buildReleaseModel, calculateCareerRewards, studioReachMultiplier } from "./economy";
+import { annualInvestmentAmount, buildContentModel, buildReleaseModel, calculateCareerRewards, projectPaymentDelta, studioReachMultiplier } from "./economy";
 import { evolveDirectorMarket, evolveGenreMarket, type MarketDirector } from "./market-system";
 import { evaluateScript, getScriptQuestions, type ScriptReport } from "./script-engine";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, externalAgencyIncome, generateTalentNews, matureContractQuote, retirementAge, rookieCandidates, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
@@ -64,6 +64,7 @@ type LocalGameSave = {
   actorHonors?: Record<number, string[]>;
   investmentClaimedYear?: number | null;
   rookieRefreshYear?: number | null;
+  projectCostPaid?: number;
   history: { title: string; gross: number; awards: number }[];
 };
 
@@ -336,6 +337,7 @@ export default function Home() {
   const [actorHonors, setActorHonors] = useState<Record<number, string[]>>({});
   const [investmentClaimedYear, setInvestmentClaimedYear] = useState<number | null>(null);
   const [rookieRefreshYear, setRookieRefreshYear] = useState<number | null>(null);
+  const [projectCostPaid, setProjectCostPaid] = useState(0);
   const [companyTab, setCompanyTab] = useState<CompanyTab>("market");
   const [signingTarget, setSigningTarget] = useState<SigningTarget | null>(null);
   const [trainingGenre, setTrainingGenre] = useState<Record<number, string>>({});
@@ -401,6 +403,7 @@ export default function Home() {
         setActorHonors(save.actorHonors ?? {});
         setInvestmentClaimedYear(save.investmentClaimedYear ?? null);
         setRookieRefreshYear(save.rookieRefreshYear ?? null);
+        setProjectCostPaid(save.projectCostPaid ?? 0);
         setHistory(save.history ?? []);
       } catch {
         window.localStorage.removeItem(SAVE_KEY);
@@ -456,10 +459,11 @@ export default function Home() {
       actorHonors,
       investmentClaimedYear,
       rookieRefreshYear,
+      projectCostPaid,
       history,
     };
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  }, [actorHonors, actorPool, agencyLedger, budget.name, cash, cast, deals, director?.id, directorPool, eventChoice, genre.name, genreMarket, history, investmentClaimedYear, promo.name, reputation, result, revealedDays, rookieRefreshYear, saveReady, scriptAnswers, scriptReport, signedTalents, slot.id, stage, studioXp, title, year]);
+  }, [actorHonors, actorPool, agencyLedger, budget.name, cash, cast, deals, director?.id, directorPool, eventChoice, genre.name, genreMarket, history, investmentClaimedYear, projectCostPaid, promo.name, reputation, result, revealedDays, rookieRefreshYear, saveReady, scriptAnswers, scriptReport, signedTalents, slot.id, stage, studioXp, title, year]);
 
   const studioLevel = Math.min(10, 1 + Math.floor(studioXp / 180));
   const studioXpProgress = studioXp % 180;
@@ -548,6 +552,14 @@ export default function Home() {
     setUtilityRoom(null);
     setWorkspaceOpen(false);
     setStage(nextStage);
+  }
+
+  function commitProjectCost(targetCost: number, nextStage: number) {
+    const paymentDelta = projectPaymentDelta(targetCost, projectCostPaid);
+    if (paymentDelta > cash) return;
+    setCash((value) => value - paymentDelta);
+    setProjectCostPaid(targetCost);
+    moveToStage(nextStage);
   }
 
   function requestActor(actor: Actor) {
@@ -762,6 +774,8 @@ export default function Home() {
 
   function simulate() {
     if (!director || cast.length !== 2) return;
+    const outstandingProjectCost = projectPaymentDelta(totalCost, projectCostPaid);
+    if (outstandingProjectCost > cash) return;
     const acting = cast.reduce((sum, item) => sum + item.acting + (deals[item.id]?.morale ?? 0) * .2, 0) / cast.length;
     const appeal = (director.appeal + cast.reduce((sum, item) => sum + item.appeal, 0)) / 3;
     const content = buildContentModel({ scriptScore, directorSkill: director.skill, acting, budgetQuality: budget.quality, fit, eventBonus: choiceEffect?.quality ?? 0, chemistry: chemistry ?? 60, morale: averageMorale, directorMatched: director.genres.includes(genre.name), actorFitRate: cast.filter((actor) => actor.genres.includes(genre.name)).length / cast.length });
@@ -787,7 +801,8 @@ export default function Home() {
     setResult({ quality, gross, profit, score: roundedScore, audience, days, monthDays, weekGross, tailGross, studioRevenue, investorShare, investmentAmount: investmentClaimed ? annualInvestment : 0, successBonus, breakEvenGross, overheadCost, dailyReports, awards, xpGain, reputationGain, reachUsed: studioReach, wordOfMouth, openingPower, retention: release.retention, trend, trendNote, competitionPressure });
     setStudioXp((value) => value + xpGain);
     setReputation((value) => Math.max(0, value + reputationGain));
-    setCash(Math.max(0, cash - totalCost + studioRevenue - investorShare - successBonus));
+    setProjectCostPaid(totalCost);
+    setCash((value) => Math.max(0, value - outstandingProjectCost + studioRevenue - investorShare - successBonus));
     setRevealedDays(0);
     setAutoPlay(true);
     setUtilityRoom(null);
@@ -882,6 +897,7 @@ export default function Home() {
     setDeals({});
     setEventChoice(null);
     setResult(null);
+    setProjectCostPaid(0);
     setRevealedDays(0);
     setAutoPlay(true);
     setCompanyNotice("");
@@ -964,7 +980,7 @@ export default function Home() {
               <SectionTitle number="2" title="制作规模" note={`公司当前可用资金 ¥${money(cash)}`} />
               <div className="budget-choice">{budgets.map((item) => <button key={item.name} className={budget.name === item.name ? "selected" : ""} onClick={() => setBudget(item)}>{item.name}<small>¥{money(Math.round(item.value * industryCostIndex))}</small></button>)}</div>
               <div className="cost-index-note"><span>行业成本指数 ×{industryCostIndex.toFixed(2)}</span><p>场地、器材、保险与人工会随年份上涨；高等级公司也承担更高年度运营成本。</p></div>
-              <ActionBar label={`${title || "未命名"} · ${genre.name}`} detail={`制作预算 ¥${money(currentBudgetCost)}`} button="开始剧本创作" disabled={!title.trim() || currentBudgetCost > cash} onClick={() => moveToStage(1)} />
+              <ActionBar label={`${title || "未命名"} · ${genre.name}`} detail={`制作预算 ¥${money(currentBudgetCost)} · 确认后立即支付`} button="开始剧本创作" disabled={!title.trim() || projectPaymentDelta(currentBudgetCost, projectCostPaid) > cash} onClick={() => commitProjectCost(currentBudgetCost, 1)} />
             </>
           )}
 
@@ -1007,7 +1023,7 @@ export default function Home() {
 
           {!utilityRoom && stage === 2 && (
             <>
-              <PageHead code="CASTING DATABASE" title="让好剧本找到" accent="对的演员。" sub={`《${title}》剧本评分 ${scriptScore}，演员会根据剧本吸引力和自身档期决定报价。`} stamp="检索中" />
+              <PageHead code="CASTING DATABASE" title="让好剧本找到" accent="对的演员。" sub={`《${title}》——${genre.name}，剧本评分 ${scriptScore}，演员会根据剧本吸引力和自身档期决定报价。`} stamp="检索中" />
               <div className={`script-leverage ${scriptScore >= 84 ? "strong" : scriptScore < 70 ? "weak" : ""}`}><span>{scriptReport?.grade}</span><div><small>剧本吸引力</small><b>{scriptScore} 分 · {scriptReport?.verdict}</b></div><p>{scriptScore >= 84 ? "头部艺人愿意为好角色降低报价。" : scriptScore >= 70 ? "大部分演员可以正常邀约，头部艺人可能要求溢价。" : "高咖演员的邀约难度较高，优先考虑适配型阵容。"}</p></div>
               <SectionTitle number="1" title="选择导演" note="点击卡片签约 1 位导演" />
               <div className="director-market-note"><span>本年度仅展示有档期的导演</span><b>{availableDirectors.length} 位可约 · 技能、号召力、报价与擅长题材会逐年变化</b></div>
@@ -1026,7 +1042,7 @@ export default function Home() {
                 <div><span>组合默契</span><b>{chemistry ?? "待第二位主演"}{chemistry ? ` · ${chemistry >= 88 ? "天生搭档" : chemistry >= 74 ? "值得期待" : "首次磨合"}` : ""}</b></div>
                 <div><span>平均士气</span><b className={averageMorale >= 0 ? "positive" : "negative"}>{averageMorale >= 0 ? "+" : ""}{averageMorale.toFixed(0)}</b></div>
               </div>}
-              <ActionBar label={director ? `${director.name} / ${cast.map((item) => item.name).join("、") || "待选主演"}` : "尚未选择导演"} detail={`剧本 ${scriptScore} 分 · 主创片酬 ¥${money(talentCost)} · 适配 +${fit}${chemistry ? ` · 默契 ${chemistry}` : ""}`} button="开机拍摄" disabled={!director || cast.length !== 2 || totalBeforeRelease + overheadCost > cash} onClick={() => { setEventChoice(null); moveToStage(3); }} back={() => moveToStage(1)} />
+              <ActionBar label={director ? `${director.name} / ${cast.map((item) => item.name).join("、") || "待选主演"}` : "尚未选择导演"} detail={`剧本 ${scriptScore} 分 · 主创片酬 ¥${money(talentCost)} · 适配 +${fit}${chemistry ? ` · 默契 ${chemistry}` : ""}`} button="开机拍摄" disabled={!director || cast.length !== 2 || projectPaymentDelta(totalBeforeRelease, projectCostPaid) > cash} onClick={() => { setEventChoice(null); commitProjectCost(totalBeforeRelease, 3); }} back={() => moveToStage(1)} />
             </>
           )}
 
@@ -1044,7 +1060,7 @@ export default function Home() {
                 <div className="event-message"><p>{productionEvent.description}</p></div>
                 <div className="event-options"><button className={eventChoice === "safe" ? "selected" : ""} onClick={() => setEventChoice("safe")}><span>A</span><div><b>{productionEvent.safe.label}</b><small>{productionEvent.safe.hint}{productionEvent.safe.cost ? ` · 当年成本 ¥${money(Math.round(productionEvent.safe.cost * industryCostIndex))}` : ""}</small></div><i>{eventChoice === "safe" ? "✓ 已决定" : "选择"}</i></button><button className={eventChoice === "bold" ? "selected" : ""} onClick={() => setEventChoice("bold")}><span>B</span><div><b>{productionEvent.bold.label}</b><small>{productionEvent.bold.hint}{productionEvent.bold.cost ? ` · 当年成本 ¥${money(Math.round(productionEvent.bold.cost * industryCostIndex))}` : ""}</small></div><i>{eventChoice === "bold" ? "✓ 已决定" : "选择"}</i></button></div>
               </div>
-              <ActionBar label={`${budget.name} · ${genre.name}`} detail={`制作与主创 ¥${money(totalBeforeRelease)} · 完片保险 ¥${money(overheadCost)}${currentEventCost ? ` · 事件追加 ¥${money(currentEventCost)}` : ""}`} button="完成制作并送审" disabled={!eventChoice} onClick={() => moveToStage(4)} back={() => moveToStage(2)} />
+              <ActionBar label={`${budget.name} · ${genre.name}`} detail={`制作与主创 ¥${money(totalBeforeRelease)} · 完片保险 ¥${money(overheadCost)}${currentEventCost ? ` · 事件追加 ¥${money(currentEventCost)}` : ""}`} button="完成制作并送审" disabled={!eventChoice || projectPaymentDelta(totalBeforeRelease + overheadCost + currentEventCost, projectCostPaid) > cash} onClick={() => commitProjectCost(totalBeforeRelease + overheadCost + currentEventCost, 4)} back={() => moveToStage(2)} />
             </>
           )}
 
@@ -1063,7 +1079,7 @@ export default function Home() {
               {investmentClaimed && <div className="financing-obligation"><span>投</span><div><b>本年度已引入外部投资 ¥{money(annualInvestment)}</b><p>上映后投资方抽取片方34%分账收入的10%，回收上限为 ¥{money(annualInvestment * 1.5)}；剩余收入才进入项目结算。</p></div></div>}
               <div className="ticket-formula"><div><span>内容底盘</span><b>剧本 {scriptScore}</b><small>剧本低于65分时，最终观众评分最高只能达到6.5</small></div><div><span>主创号召</span><b>{Math.round(((director?.appeal ?? 0) + cast.reduce((sum, actor) => sum + actor.appeal, 0)) / 3)}</b><small>演员评级额外提供开画 +{castTierOpeningBonus.toFixed(1)}，但不能替代口碑</small></div><div><span>发行放大</span><b>×{(slot.boost * promo.boost).toFixed(2)}</b><small>高宣发抬升开画，但投入越高边际收益越低</small></div><div><span>同期竞争</span><b>-{Math.round(competitionPressure * 100)}%</b><small>竞品分流开画观众，并持续争夺排片</small></div><div className="studio-factor"><span>制片人基本盘</span><b>×{studioReach.toFixed(2)}</b><small>只强化开画，等级与声望影响会逐日衰减</small></div></div>
               <div className="cost-breakdown"><span>制作与主创 <b>¥{money(totalBeforeRelease)}</b></span><span>完片保险与管理 <b>¥{money(overheadCost)}</b></span><span>宣发及追加 <b>¥{money(currentPromoCost + currentEventCost)}</b></span><strong>总投资 ¥{money(totalCost)}</strong></div>
-              <ActionBar label={`${slot.name} · ${promo.name}`} detail={`总投资 ¥${money(totalCost)} · 同档分流 ${Math.round(competitionPressure * 100)}%`} button="全国上映，揭晓票房" disabled={totalCost > cash} onClick={simulate} back={() => moveToStage(3)} />
+              <ActionBar label={`${slot.name} · ${promo.name}`} detail={`总投资 ¥${money(totalCost)} · 待支付宣发 ¥${money(Math.max(0, projectPaymentDelta(totalCost, projectCostPaid)))} · 同档分流 ${Math.round(competitionPressure * 100)}%`} button="全国上映，揭晓票房" disabled={projectPaymentDelta(totalCost, projectCostPaid) > cash} onClick={simulate} back={() => moveToStage(3)} />
             </>
           )}
 
