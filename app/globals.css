@@ -457,6 +457,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
 .industry-news article small { color: #b9b7af; font-size: 8px; }
 .industry-news p { margin: 2px 0 0; color: #c6c4bd; font-size: 8px; line-height: 1.5; }
 .industry-news .breakout-note { padding: 8px 9px; border: 1px solid rgba(255,205,68,.35); border-radius: 10px; background: rgba(255,205,68,.08); color: #f7dfa0; }
+.industry-news .appeal-change-note { padding: 8px 9px; border: 1px solid rgba(89,205,218,.4); border-radius: 10px; background: rgba(24,126,145,.14); color: #c3f2f5; }
+.industry-news .salary-change-note { padding: 8px 9px; border: 1px solid rgba(255,125,93,.4); border-radius: 10px; background: rgba(255,89,55,.1); color: #ffd0c4; }
 .industry-news .tier-change-note { padding: 8px 9px; border: 1px solid rgba(92,183,166,.35); border-radius: 10px; background: rgba(92,183,166,.1); color: #b9e7dd; }
 .market-cycle-banner { display: grid; grid-template-columns: 1fr 1.35fr; gap: 12px; margin: 0 0 18px; padding: 14px; border: 1px solid #d8d4c8; border-radius: 17px; background: linear-gradient(135deg, #fffdf7, #efeade); }
 .market-cycle-banner > div { display: grid; align-content: center; gap: 3px; }

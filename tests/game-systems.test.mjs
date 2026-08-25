@@ -4,7 +4,7 @@ import { calculateCompetitionPressure, generateCompetitors } from "../app/compet
 import { annualInvestmentAmount, boxOfficeSettlementTarget, buildAudienceScoreCurve, buildContentModel, buildReleaseModel, calculateCareerRewards, determineAwards, investorRevenueShare, projectPaymentDelta, studioReachMultiplier } from "../app/economy.ts";
 import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts";
 import { evaluateScript, getScriptQuestionBank, getScriptQuestions } from "../app/script-engine.ts";
-import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
+import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
 
 const releaseBase = {
   appeal: 82,
@@ -192,7 +192,14 @@ test("genre training remains unique and rookie fees catch established stars afte
   assert.ok(firstHit >= 600);
   assert.ok(secondHit > firstHit);
   assert.ok(thirdHit > 1500);
-  assert.ok(rookiePerformanceFee(700, "S", 3, .5) < 700);
+  const firstFlop = rookiePerformanceFee(100, "B", 1, .5);
+  const fifthCredit = rookiePerformanceFee(firstFlop, "B", 5, .5);
+  assert.ok(firstFlop > 100);
+  assert.ok(fifthCredit > firstFlop);
+  const firstSalary = rookieCareerSalary(90, firstHit, 1);
+  const thirdSalary = rookieCareerSalary(firstSalary, thirdHit, 3);
+  assert.ok(firstSalary > 90);
+  assert.ok(thirdSalary > firstSalary);
   const contract = { origin: "rookie", signingFee: 100, annualSalary: 100 };
   const renewal = talentRenewalQuote({ acting: 98, appeal: 98, fee: thirdHit }, contract);
   assert.ok(renewal.renewalFee > 2500);

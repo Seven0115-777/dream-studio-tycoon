@@ -157,6 +157,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(talentSystem, /export function retirementAge/);
   assert.match(talentSystem, /export function rookieExposureAppealGain/);
   assert.match(talentSystem, /export function rookiePerformanceFee/);
+  assert.match(talentSystem, /export function rookieCareerSalary/);
   assert.match(talentSystem, /export function talentRenewalQuote/);
   assert.match(talentSystem, /export function uniqueGenres/);
   assert.match(talentSystem, /export function actorTier/);
