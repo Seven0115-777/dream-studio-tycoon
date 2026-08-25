@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionBar, GameHeader, Metric, ResultStat, ScreenHead as PageHead, SectionTitle, StageProgress } from "./components/mobile-ui";
 import { calculateCompetitionPressure, generateCompetitors, type CompetitorMovie } from "./competition-system";
-import { annualInvestmentAmount, boxOfficeSettlementTarget, buildContentModel, buildReleaseModel, calculateCareerRewards, projectPaymentDelta, studioReachMultiplier } from "./economy";
+import { annualInvestmentAmount, boxOfficeSettlementTarget, buildContentModel, buildReleaseModel, calculateCareerRewards, determineAwards, projectPaymentDelta, studioReachMultiplier } from "./economy";
 import { evolveDirectorMarket, evolveGenreMarket, type MarketDirector } from "./market-system";
 import { evaluateScript, getScriptQuestions, type ScriptReport } from "./script-engine";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, externalAgencyIncome, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
@@ -826,15 +826,9 @@ export default function Home() {
     const audience = Math.round(gross * 10000 / 42);
     const trend = days[6] > days[0] * 1.05 ? "口碑逆袭" : days[1] > days[0] && days[6] > days[0] * .72 ? "稳健长线" : days[1] < days[0] * .9 && days[6] < days[0] * .55 ? "高开低走" : "正常回落";
     const trendNote = trend === "口碑逆袭" ? "高口碑抵消同档竞争，路人推荐推动持续增量。" : trend === "高开低走" ? "明星与宣发拉高首日，但剧本口碑未能承接热度。" : trend === "稳健长线" ? "内容、开画与同档竞争较为均衡，首周维持稳定排片。" : "市场热度按常规节奏释放，后续表现由口碑与竞品共同决定。";
-    const awards: string[] = [];
-    if (quality >= 88) awards.push("年度最佳影片");
-    if (director.skill + fit >= 101) awards.push("最佳导演");
-    if (acting >= 88) {
-      awards.push("最佳表演");
-      if (performanceLead && performanceLead.acting >= 93) setActorHonors((current) => ({ ...current, [performanceLead.id]: [...new Set([...(current[performanceLead.id] ?? []), "最佳表演"])] }));
-    }
-    if ((chemistry ?? 0) >= 90) awards.push("最佳银幕搭档");
-    if (roundedScore >= 8.6) awards.push("观众选择奖");
+    const awards = determineAwards({ quality, directorScore: director.skill + fit, acting, chemistry: chemistry ?? 0, audienceScore: roundedScore });
+    const unlocksActingTitle = awards.includes("年度最佳影片") && awards.includes("最佳表演") && Boolean(performanceLead && performanceLead.acting >= 93);
+    if (unlocksActingTitle && performanceLead) setActorHonors((current) => ({ ...current, [performanceLead.id]: [...new Set([...(current[performanceLead.id] ?? []), "最佳表演"])] }));
     const { xpGain, reputationGain } = calculateCareerRewards(quality, roundedScore, gross / Math.max(1, breakEvenGross), awards.length);
     const dailyReports = buildDailyReports(title, days, wordOfMouth, weekScores, { director, cast, genre: genre.name, quality, honors: actorHonors });
     setResult({ quality, gross, profit, score: roundedScore, audience, days, monthDays, weekGross, tailGross, studioRevenue, investorShare, investmentAmount: investmentClaimed ? annualInvestment : 0, successBonus, breakEvenGross, overheadCost, dailyReports, awards, xpGain, reputationGain, reachUsed: studioReach, wordOfMouth, openingPower, retention: release.retention, trend, trendNote, competitionPressure });
@@ -1158,7 +1152,7 @@ export default function Home() {
                 <div className="growth-result"><div><span>制片人经验</span><b>+{result.xpGain} XP</b><small>当前 Lv.{studioLevel} · {studioXpProgress}/180</small></div><div><span>行业声望</span><b className={result.reputationGain >= 0 ? "positive" : "negative"}>{result.reputationGain >= 0 ? "+" : ""}{result.reputationGain}</b><small>当前声望 {reputation}</small></div><div><span>项目收益</span><b className={result.profit >= 0 ? "positive" : "negative"}>{result.profit >= 0 ? "+" : "-"}¥{money(Math.abs(result.profit))}</b><small>30日票房 ¥{money(result.gross)} · 片方分账 ¥{money(result.studioRevenue)}{result.investorShare ? ` · 投资方分成 -¥${money(result.investorShare)}` : ""}</small></div></div>
                 <div className="career-update"><span>艺人动态</span><b>{cast.map((actor) => actor.name).join("、")}获得项目经验；下一年度的号召力和身价将按照票房回本倍数重新评估。自社新人若以高演技搭档高人气演员，还会获得额外曝光成长。</b></div>
                 <SectionTitle number="奖" title="年度电影荣誉" note={result.awards.length ? `共获 ${result.awards.length} 项 · 奖项已计入经验与声望` : "继续积累作品与行业声望"} />
-                <div className="awards-row">{result.awards.length ? result.awards.map((award) => <div key={award}><span>★</span><b>{award}</b><small>{award === "最佳表演" && performanceLead ? `${performanceLead.name} 获奖${performanceLead.acting >= 93 ? ` · 解锁${performanceLead.gender === "女" ? "影后" : "影帝"}称号` : ""}` : `第 ${year} 届金幕奖`} · 结算权重 +20 XP / +12 声望</small></div>) : <div className="no-award"><span>—</span><b>本届惜未获奖</b><small>质量达到 88 或形成突出主创优势可冲击奖项</small></div>}</div>
+                <div className="awards-row">{result.awards.length ? result.awards.map((award) => <div key={award}><span>★</span><b>{award}</b><small>{award === "最佳表演" && performanceLead ? `${performanceLead.name} 获奖${result.awards.includes("年度最佳影片") && performanceLead.acting >= 93 ? ` · 解锁${performanceLead.gender === "女" ? "影后" : "影帝"}称号` : ""}` : `第 ${year} 届金幕奖`} · 结算权重 +20 XP / +12 声望</small></div>) : <div className="no-award"><span>—</span><b>本届惜未获奖</b><small>最终观众评分达到 8.6 后，才有资格参与所有奖项评选</small></div>}</div>
                 <div className="year-end"><div><span>经纪业务已解锁</span><b>把电影收益变成公司的长期艺人资产。</b><small>签约成熟艺人，或从新人开始培养下一位明星</small></div><button onClick={enterCompanyManagement}>进入公司经营期 <i>→</i></button></div>
               </>}
             </>

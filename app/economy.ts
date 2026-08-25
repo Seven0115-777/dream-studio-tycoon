@@ -91,6 +91,17 @@ export function calculateCareerRewards(quality: number, audienceScore: number, r
   return { xpGain, reputationGain };
 }
 
+export function determineAwards({ quality, directorScore, acting, chemistry, audienceScore }: { quality: number; directorScore: number; acting: number; chemistry: number; audienceScore: number }) {
+  if (audienceScore < 8.6) return [];
+  const awards: string[] = [];
+  if (quality >= 88) awards.push("年度最佳影片");
+  if (directorScore >= 101) awards.push("最佳导演");
+  if (acting >= 88) awards.push("最佳表演");
+  if (chemistry >= 90) awards.push("最佳银幕搭档");
+  awards.push("观众选择奖");
+  return awards;
+}
+
 export function buildContentModel(input: ContentModelInput): ContentModel {
   const actorFitRate = clamp(0, 1, input.actorFitRate ?? 1);
   const effectiveDirectorSkill = input.directorSkill * (input.directorMatched === false ? .8 : 1);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { calculateCompetitionPressure, generateCompetitors } from "../app/competition-system.ts";
-import { annualInvestmentAmount, boxOfficeSettlementTarget, buildAudienceScoreCurve, buildContentModel, buildReleaseModel, calculateCareerRewards, investorRevenueShare, projectPaymentDelta, studioReachMultiplier } from "../app/economy.ts";
+import { annualInvestmentAmount, boxOfficeSettlementTarget, buildAudienceScoreCurve, buildContentModel, buildReleaseModel, calculateCareerRewards, determineAwards, investorRevenueShare, projectPaymentDelta, studioReachMultiplier } from "../app/economy.ts";
 import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts";
 import { evaluateScript, getScriptQuestionBank, getScriptQuestions } from "../app/script-engine.ts";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
@@ -139,6 +139,13 @@ test("box office cash is credited by revealed day and fully settled on day seven
   assert.equal(boxOfficeSettlementTarget(weekDays, 1, 5000, 300, 700), 340);
   assert.equal(boxOfficeSettlementTarget(weekDays, 3, 5000, 300, 700), 918);
   assert.equal(boxOfficeSettlementTarget(weekDays, 7, 5000, 300, 700), 4000);
+});
+
+test("every award requires an audience score of at least 8.6", () => {
+  const eliteConditions = { quality: 99, directorScore: 125, acting: 95, chemistry: 94 };
+  assert.deepEqual(determineAwards({ ...eliteConditions, audienceScore: 8.5 }), []);
+  assert.deepEqual(determineAwards({ ...eliteConditions, audienceScore: 8.6 }), ["年度最佳影片", "最佳导演", "最佳表演", "最佳银幕搭档", "观众选择奖"]);
+  assert.deepEqual(determineAwards({ quality: 70, directorScore: 80, acting: 70, chemistry: 70, audienceScore: 8.6 }), ["观众选择奖"]);
 });
 
 test("former self-trained talent needs a B-level combined score to enter the mature market", () => {

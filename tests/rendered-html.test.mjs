@@ -87,6 +87,8 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /commitProjectCost\(totalBeforeRelease, 3\)/);
   assert.match(page, /setCash\(\(value\) => Math\.max\(0, value - outstandingProjectCost/);
   assert.match(page, /boxOfficeSettlementTarget/);
+  assert.match(page, /determineAwards/);
+  assert.match(page, /awards\.includes\("年度最佳影片"\).*awards\.includes\("最佳表演"\)/);
   assert.match(page, /setBoxOfficeCashCredited\(target\)/);
   assert.match(page, /CONTRACT EXPIRY ALERT/);
   assert.match(page, /现在处理/);
@@ -144,6 +146,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(economy, /buildReleaseModel/);
   assert.match(economy, /export function projectPaymentDelta/);
   assert.match(economy, /export function boxOfficeSettlementTarget/);
+  assert.match(economy, /export function determineAwards/);
   assert.match(scriptEngine, /getScriptQuestions/);
   assert.match(scriptEngine, /getScriptQuestionBank/);
   assert.match(scriptEngine, /buildExpansionQuestions/);
