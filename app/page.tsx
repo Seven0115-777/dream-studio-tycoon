@@ -1157,14 +1157,14 @@ export default function Home() {
                 <SectionTitle number="新" title={`第 ${year} 届新人招募`} note="低成本签约，高潜力需要持续培训与作品机会" />
                 <div className="agency-explainer rookie"><b>新人培养模式</b><p>签约费接近于零，但初期不能承担票房号召。潜力决定成长上限，培训和参演共同塑造类型路线。</p></div>
                 <div className="rookie-refresh-bar">
-                  <div><span>SCOUTING REFRESH · 每年一次</span><b>{rookieRefreshYear === year ? "本年度星探名单已刷新" : "观看广告，提高稀有新人出现率"}</b><small>刷新名单固定出现 1 名稀有新人：75% 金框，25% 红框。测试版无需观看广告。</small></div>
-                  <button type="button" disabled={rookieRefreshYear === year} onClick={() => { setRookieRefreshYear(year); setCompanyNotice("星探刷新完成：本届名单已保证出现一名金框或红框新人。本年度不可再次刷新。"); }}>{rookieRefreshYear === year ? "本年已刷新" : "观看广告刷新"}</button>
+                  <div><span>SCOUTING REFRESH · 每年一次</span><b>{rookieRefreshYear === year ? "本年度星探名单已刷新" : "观看广告，提高高潜新人出现率"}</b><small>刷新名单固定出现 1 名高潜新人：75% 实力新锐，25% 天赋新星。测试版无需观看广告。</small></div>
+                  <button type="button" disabled={rookieRefreshYear === year} onClick={() => { setRookieRefreshYear(year); setCompanyNotice("星探刷新完成：本届名单已保证出现一名实力新锐或天赋新星。本年度不可再次刷新。"); }}>{rookieRefreshYear === year ? "本年已刷新" : "观看广告刷新"}</button>
                 </div>
                 <div className="signing-grid">{rookieMarket.map((actor) => {
                   const quote = rookieContractQuote(actor);
                   const firstPayment = quote.signingFee + quote.annualSalary;
                   const unavailable = signedTalents.length >= rosterCapacity || cash < firstPayment;
-                  const rarityLabel = actor.rarity === "red" ? "SSR · 红框" : actor.rarity === "gold" ? "SR · 金框" : "新锐";
+                  const rarityLabel = actor.rarity === "red" ? "天赋新星" : actor.rarity === "gold" ? "实力新锐" : "潜力新人";
                   return <article className={`signing-card rookie-card rarity-${actor.rarity}`} key={actor.id}><header><PortraitAvatar person={actor} group="rookie" /><div><b>{actor.name}</b><small>{actorTier(actor.acting, actor.appeal)}级 · 综合 {actor.acting + actor.appeal} · {actor.tag}</small></div><i><strong className="rookie-rarity">{rarityLabel}</strong>{actor.profile.age}岁</i></header><div className="signing-stats"><span>演技 <b>{actor.acting}</b></span><span>号召 <b>{actor.appeal}</b></span><span>潜力 <b>{actor.potential}</b></span></div><p>{actor.genres.join(" · ")} · 成长速度 +{actor.growth}</p><div className="contract-price"><span>签约费 ¥{money(quote.signingFee)}</span><span>年薪 ¥{money(quote.annualSalary)}</span><b>首期 ¥{money(firstPayment)}</b></div><button disabled={unavailable} onClick={() => setSigningTarget({ actor, rookie: actor, origin: "rookie" })}>{signedTalents.length >= rosterCapacity ? "签约名额已满" : cash < firstPayment ? "公司资金不足" : "纳入新人计划"}</button></article>;
                 })}</div>
               </div>}

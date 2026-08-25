@@ -90,6 +90,10 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /male-actors-anime-atlas-v1\.webp/);
   assert.match(page, /female-actors-anime-atlas-v1\.webp/);
   assert.match(page, /rookies-anime-atlas-v2\.webp/);
+  assert.match(page, /潜力新人/);
+  assert.match(page, /实力新锐/);
+  assert.match(page, /天赋新星/);
+  assert.doesNotMatch(page, /SSR · 红框|SR · 金框|75% 金框|25% 红框/);
   assert.match(page, /mobileSceneAssets/);
   assert.match(page, /动漫头像/);
   assert.match(page, /industry-news-avatar/);
