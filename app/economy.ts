@@ -56,6 +56,13 @@ export type ContentModel = {
 const clamp = (minimum: number, maximum: number, value: number) => Math.max(minimum, Math.min(maximum, value));
 const STUDIO_SHARE = .34;
 
+export function boxOfficeSettlementTarget(weekDays: number[], revealedDays: number, studioRevenue: number, investorShare = 0, successBonus = 0) {
+  const visibleDays = Math.max(0, Math.min(7, Math.floor(revealedDays)));
+  if (visibleDays === 0) return 0;
+  if (visibleDays === 7) return Math.max(0, Math.round(studioRevenue - investorShare - successBonus));
+  return Math.round(weekDays.slice(0, visibleDays).reduce((sum, value) => sum + value, 0) * STUDIO_SHARE);
+}
+
 export function projectPaymentDelta(targetCost: number, paidCost: number) {
   return Math.round(targetCost) - Math.round(paidCost);
 }

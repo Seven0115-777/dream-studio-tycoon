@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { calculateCompetitionPressure, generateCompetitors } from "../app/competition-system.ts";
-import { annualInvestmentAmount, buildAudienceScoreCurve, buildContentModel, buildReleaseModel, calculateCareerRewards, investorRevenueShare, projectPaymentDelta, studioReachMultiplier } from "../app/economy.ts";
+import { annualInvestmentAmount, boxOfficeSettlementTarget, buildAudienceScoreCurve, buildContentModel, buildReleaseModel, calculateCareerRewards, investorRevenueShare, projectPaymentDelta, studioReachMultiplier } from "../app/economy.ts";
 import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts";
 import { evaluateScript, getScriptQuestionBank, getScriptQuestions } from "../app/script-engine.ts";
-import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, matureContractQuote, retirementAge, rookieCandidates, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
+import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
 
 const releaseBase = {
   appeal: 82,
@@ -131,6 +131,19 @@ test("project payments deduct only the newly committed cumulative cost", () => {
   assert.equal(projectPaymentDelta(10000, 0), 10000);
   assert.equal(projectPaymentDelta(13800, 10000), 3800);
   assert.equal(projectPaymentDelta(12500, 13800), -1300);
+});
+
+test("box office cash is credited by revealed day and fully settled on day seven", () => {
+  const weekDays = [1000, 900, 800, 700, 600, 500, 400];
+  assert.equal(boxOfficeSettlementTarget(weekDays, 0, 5000, 300, 700), 0);
+  assert.equal(boxOfficeSettlementTarget(weekDays, 1, 5000, 300, 700), 340);
+  assert.equal(boxOfficeSettlementTarget(weekDays, 3, 5000, 300, 700), 918);
+  assert.equal(boxOfficeSettlementTarget(weekDays, 7, 5000, 300, 700), 4000);
+});
+
+test("former self-trained talent needs a B-level combined score to enter the mature market", () => {
+  assert.equal(isMatureMarketEligible({ acting: 74, appeal: 75 }), false);
+  assert.equal(isMatureMarketEligible({ acting: 75, appeal: 75 }), true);
 });
 
 test("annual scouting favors ordinary rookies while the yearly refresh guarantees one rare card", () => {

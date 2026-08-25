@@ -86,6 +86,12 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /commitProjectCost\(currentBudgetCost, 1\)/);
   assert.match(page, /commitProjectCost\(totalBeforeRelease, 3\)/);
   assert.match(page, /setCash\(\(value\) => Math\.max\(0, value - outstandingProjectCost/);
+  assert.match(page, /boxOfficeSettlementTarget/);
+  assert.match(page, /setBoxOfficeCashCredited\(target\)/);
+  assert.match(page, /CONTRACT EXPIRY ALERT/);
+  assert.match(page, /现在处理/);
+  assert.match(page, /isMatureMarketEligible/);
+  assert.match(page, /person\.id >= 100 \? "rookie" : "actor"/);
   assert.match(page, /TALENT OPERATIONS TERMINAL/);
   assert.match(page, /CAPITAL ACCESS TERMINAL/);
   assert.match(css, /@keyframes feed-rise/);
@@ -126,6 +132,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /演员评级额外提供开画/);
   assert.match(page, /最终观众评分最高只能达到6\.5/);
   assert.match(mobileUi, /export function GameHeader/);
+  assert.match(mobileUi, /制片第 \{year\} 年/);
   assert.match(mobileUi, /export function StageProgress/);
   assert.match(mobileUi, /export function ActionBar/);
   assert.match(layout, /viewportFit:\s*"cover"/);
@@ -136,6 +143,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(css, /\.room-operation-shell \.project-board \{ width: calc\(100% - 24px\); margin: 12px auto;/);
   assert.match(economy, /buildReleaseModel/);
   assert.match(economy, /export function projectPaymentDelta/);
+  assert.match(economy, /export function boxOfficeSettlementTarget/);
   assert.match(scriptEngine, /getScriptQuestions/);
   assert.match(scriptEngine, /getScriptQuestionBank/);
   assert.match(scriptEngine, /buildExpansionQuestions/);
@@ -149,6 +157,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(talentSystem, /export function talentRenewalQuote/);
   assert.match(talentSystem, /export function uniqueGenres/);
   assert.match(talentSystem, /export function actorTier/);
+  assert.match(talentSystem, /export function isMatureMarketEligible/);
   assert.match(talentSystem, /export function tierOpeningBonus/);
   assert.match(talentSystem, /profile\.tier === "SS"/);
   assert.match(talentSystem, /export const rookieCandidates/);

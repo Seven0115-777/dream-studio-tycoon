@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 
 export function GameHeader({ level, year, cash, reputation, xpProgress }: { level: number; year: number; cash: string; reputation: number; xpProgress: number }) {
   return <header className="game-header">
-    <div className="game-header__brand"><span>片</span><div><b>造梦片场</b><small>第 {year} 制片年</small></div></div>
+    <div className="game-header__brand"><span>片</span><div><b>造梦片场</b><small>制片第 {year} 年</small></div></div>
     <div className="game-header__wallet"><small>可用资金</small><b>¥{cash}</b></div>
     <div className="game-header__progress"><span><b>Lv.{level}</b> 制片人</span><i><em style={{ width: `${xpProgress / 180 * 100}%` }} /></i><span>声望 {reputation}</span></div>
   </header>;

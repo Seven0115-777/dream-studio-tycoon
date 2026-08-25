@@ -733,7 +733,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
 .paper-confirm i { font-size: 17px; font-style: normal; }
 .operation-casting .project-board { background: rgba(226,214,190,.97); }
 .operation-casting .talent-card { border-radius: 4px; border-color: rgba(84,67,43,.28); background: #f6eddc; box-shadow: 0 6px 12px rgba(72,52,27,.1); }
-.operation-casting .talent-card::before { content: "CASTING FILE"; position: absolute; top: 8px; left: 58px; color: rgba(117,85,44,.38); font-size: 6px; font-weight: 900; letter-spacing: .14em; }
+.operation-casting .talent-card::before { content: "CASTING FILE"; position: absolute; top: 7px; right: 9px; color: rgba(117,85,44,.38); font-size: 6px; font-weight: 900; letter-spacing: .14em; }
+.operation-casting .talent-card.selected::before { right: 36px; }
+.operation-casting .talent-card > div:first-of-type { padding-top: 7px; }
 .operation-casting .talent-card.selected { border-color: #9b4b36; background: #fff4df; box-shadow: inset 0 4px #9b4b36, 0 8px 16px rgba(72,52,27,.12); }
 .operation-filming .project-board { background: rgba(221,216,204,.96); box-shadow: 0 24px 60px rgba(0,0,0,.5), inset 0 0 0 6px rgba(36,38,36,.08); }
 .operation-filming .production-overview { border-radius: 5px; }
@@ -1012,6 +1014,19 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
 .contract-modal .agency-contract-summary .contract-total b, .contract-modal .contract-payback span { color: #ff8a6d; }
 .contract-modal .confirm-agency-signing { border: 1px solid rgba(255,119,82,.5); border-radius: 3px; background: linear-gradient(90deg, #c94f35, #ef704c); }
 .contract-modal .negotiation-error { border: 1px solid rgba(255,105,75,.28); border-radius: 3px; background: rgba(89,32,30,.35); color: #ff957d; }
+.expiry-reminder-backdrop { align-items: center; }
+.expiry-reminder-modal { width: min(100%, 470px); padding: 24px 18px; text-align: center; }
+.expiry-reminder-symbol { width: 58px; height: 58px; display: grid; place-items: center; margin: 18px auto 12px; border: 1px solid rgba(255,126,88,.48); border-radius: 50%; background: rgba(154,60,43,.22); color: #ff9478; box-shadow: 0 0 26px rgba(255,105,71,.15); font-size: 20px; font-weight: 900; }
+.expiry-reminder-modal h2 { margin: 0; font-size: 20px; }
+.expiry-reminder-modal > p:not(.eyebrow) { max-width: 400px; margin: 10px auto 18px; color: #7fa0a7; font-size: 9px; line-height: 1.7; }
+.expiry-talent-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0 0 18px; }
+.expiry-talent-list > span { min-width: 112px; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid rgba(92,179,195,.2); border-radius: 4px; background: rgba(7,25,33,.82); color: #e1edef; text-align: left; }
+.expiry-talent-list .portrait-avatar { width: 38px; height: 38px; flex: none; }
+.expiry-talent-list b { font-size: 10px; }
+.expiry-reminder-actions { display: grid; grid-template-columns: 1fr 1.2fr; gap: 8px; }
+.expiry-reminder-actions button { min-height: 48px; border: 1px solid rgba(94,180,196,.22); border-radius: 4px; background: rgba(8,28,36,.88); color: #9bc3ca; font-size: 9px; font-weight: 900; cursor: pointer; }
+.expiry-reminder-actions button:last-child { border-color: rgba(255,119,82,.52); background: linear-gradient(90deg, #c95037, #e86d4b); color: white; }
+.contract-expiry-inline { display: block; margin-top: 4px; color: #ffca63; font-size: 8px; font-style: normal; letter-spacing: .08em; }
 .finance-modal .finance-seal { border-color: rgba(88,192,209,.4); border-radius: 4px; background: rgba(34,112,126,.17); color: #7bd5e2; box-shadow: 0 0 22px rgba(66,183,202,.1); }
 .finance-modal > p:not(.eyebrow) { color: #77979e; }
 .finance-modal .finance-terms span { border: 1px solid rgba(88,174,190,.17); border-radius: 3px; background: rgba(7,24,32,.78); color: #6b8e95; }

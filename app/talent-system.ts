@@ -21,6 +21,7 @@ export type AgencyActor = {
   tag: string;
   profile?: AgencyProfile;
   potential?: number;
+  careerStartYear?: number;
 };
 
 export type TalentContract = {
@@ -50,6 +51,7 @@ export type AgencyLedger = {
   expiredNames: string[];
   operatingCost?: number;
   retiredNames?: string[];
+  withdrawnNames?: string[];
   talentNews?: TalentNews[];
   breakoutNotes?: string[];
   tierChanges?: string[];
@@ -163,6 +165,10 @@ export function buildRookieMarket(year: number, signedIds: ReadonlySet<number> =
 export function actorTier(acting: number, appeal: number): ActorTier {
   const total = acting + appeal;
   return total >= 195 ? "SS" : total >= 182 ? "S" : total >= 175 ? "A" : "B";
+}
+
+export function isMatureMarketEligible(actor: Pick<AgencyActor, "acting" | "appeal">) {
+  return actor.acting + actor.appeal >= 150;
 }
 
 export function tierRank(tier: ActorTier) {
