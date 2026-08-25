@@ -104,6 +104,8 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /解散公司并建立全新存档/);
   assert.match(page, /评分驱动票房/);
   assert.match(page, /只强化开画，等级与声望影响会逐日衰减/);
+  assert.match(page, /const \[firstId, secondId\] = \[first\.id, second\.id\]\.sort/);
+  assert.match(page, /firstId \* 17 \+ secondId \* 11/);
   assert.match(page, /投入越高边际收益越低/);
   assert.match(page, /年度艺人舆情与市场变动/);
   assert.match(page, /同期竞品/);

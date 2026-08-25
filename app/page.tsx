@@ -215,8 +215,9 @@ const specialChemistry: Record<string, number> = {
 };
 
 function chemistryScore(first: Actor, second: Actor) {
-  const key = [first.id, second.id].sort((a, b) => a - b).join("-");
-  return specialChemistry[key] ?? 58 + ((first.id * 17 + second.id * 11) % 34);
+  const [firstId, secondId] = [first.id, second.id].sort((a, b) => a - b);
+  const key = `${firstId}-${secondId}`;
+  return specialChemistry[key] ?? 58 + ((firstId * 17 + secondId * 11) % 34);
 }
 
 function makeProductionEvent(cast: Actor[], year: number): ProductionEvent {
