@@ -4,7 +4,7 @@ import { calculateCompetitionPressure, generateCompetitors } from "../app/compet
 import { annualInvestmentAmount, buildAudienceScoreCurve, buildContentModel, buildReleaseModel, calculateCareerRewards, investorRevenueShare, studioReachMultiplier } from "../app/economy.ts";
 import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts";
 import { evaluateScript, getScriptQuestionBank, getScriptQuestions } from "../app/script-engine.ts";
-import { actorTier, ageAppealDecline, agencyCapacity, currentActorAge, generateTalentNews, matureContractQuote, retirementAge, rookieCandidates, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
+import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, matureContractQuote, retirementAge, rookieCandidates, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
 
 const releaseBase = {
   appeal: 82,
@@ -111,11 +111,44 @@ test("rookies grow quickly toward potential while mature talent stays stable", (
 });
 
 test("every rookie enters the signing market between ages 18 and 20", () => {
-  assert.equal(rookieCandidates.length, 8);
+  assert.equal(rookieCandidates.length, 30);
   assert.ok(rookieCandidates.every((rookie) => rookie.profile.age >= 18 && rookie.profile.age <= 20));
   assert.deepEqual(new Set(rookieCandidates.map((rookie) => rookie.profile.age)), new Set([18, 19, 20]));
+  const ordinary = rookieCandidates.filter((rookie) => rookie.rarity === "ordinary");
+  const gold = rookieCandidates.filter((rookie) => rookie.rarity === "gold");
+  const red = rookieCandidates.filter((rookie) => rookie.rarity === "red");
+  assert.equal(ordinary.length, 22);
+  assert.equal(gold.length, 4);
+  assert.equal(red.length, 4);
+  assert.ok(ordinary.every((rookie) => rookie.potential >= 70 && rookie.potential <= 89));
+  assert.ok(gold.every((rookie) => rookie.potential >= 90 && rookie.potential <= 95));
+  assert.ok(red.every((rookie) => rookie.potential >= 95 && rookie.potential <= 99));
   assert.equal(currentActorAge(18, 8, 8), 18);
   assert.equal(currentActorAge(18, 12, 8), 22);
+});
+
+test("annual scouting favors ordinary rookies while the yearly refresh guarantees one rare card", () => {
+  const naturalCounts = { ordinary: 0, gold: 0, red: 0 };
+  const refreshCounts = { gold: 0, red: 0 };
+  for (let year = 1; year <= 200; year += 1) {
+    const naturalMarket = buildRookieMarket(year);
+    assert.equal(naturalMarket.length, 4);
+    assert.equal(new Set(naturalMarket.map((rookie) => rookie.id)).size, 4);
+    naturalMarket.forEach((rookie) => naturalCounts[rookie.rarity] += 1);
+
+    const refreshedMarket = buildRookieMarket(year, new Set(), true);
+    assert.equal(refreshedMarket.length, 4);
+    assert.equal(new Set(refreshedMarket.map((rookie) => rookie.id)).size, 4);
+    const rare = refreshedMarket.filter((rookie) => rookie.rarity !== "ordinary");
+    assert.equal(rare.length, 1);
+    refreshCounts[rare[0].rarity] += 1;
+  }
+  assert.ok(naturalCounts.ordinary > naturalCounts.gold * 5);
+  assert.ok(naturalCounts.gold > naturalCounts.red);
+  assert.ok(refreshCounts.gold >= 140 && refreshCounts.gold <= 160);
+  assert.equal(refreshCounts.gold + refreshCounts.red, 200);
+  const allGoldSigned = new Set(rookieCandidates.filter((rookie) => rookie.rarity === "gold").map((rookie) => rookie.id));
+  assert.equal(buildRookieMarket(1, allGoldSigned, true).filter((rookie) => rookie.rarity === "red").length, 1);
 });
 
 test("genre training remains unique and rookie fees catch established stars after hit films", () => {

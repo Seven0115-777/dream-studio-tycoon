@@ -6,7 +6,7 @@ import { calculateCompetitionPressure, generateCompetitors, type CompetitorMovie
 import { annualInvestmentAmount, buildContentModel, buildReleaseModel, calculateCareerRewards, studioReachMultiplier } from "./economy";
 import { evolveDirectorMarket, evolveGenreMarket, type MarketDirector } from "./market-system";
 import { evaluateScript, getScriptQuestions, type ScriptReport } from "./script-engine";
-import { actorTier, ageAppealDecline, agencyCapacity, currentActorAge, externalAgencyIncome, generateTalentNews, matureContractQuote, retirementAge, rookieCandidates, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
+import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, externalAgencyIncome, generateTalentNews, matureContractQuote, retirementAge, rookieCandidates, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
 
 type Genre = { name: string; icon: string; heat: number; color: string; heatChange?: number; marketNote?: string };
 type Director = MarketDirector;
@@ -63,6 +63,7 @@ type LocalGameSave = {
   agencyLedger: AgencyLedger | null;
   actorHonors?: Record<number, string[]>;
   investmentClaimedYear?: number | null;
+  rookieRefreshYear?: number | null;
   history: { title: string; gross: number; awards: number }[];
 };
 
@@ -334,6 +335,7 @@ export default function Home() {
   const [agencyLedger, setAgencyLedger] = useState<AgencyLedger | null>(null);
   const [actorHonors, setActorHonors] = useState<Record<number, string[]>>({});
   const [investmentClaimedYear, setInvestmentClaimedYear] = useState<number | null>(null);
+  const [rookieRefreshYear, setRookieRefreshYear] = useState<number | null>(null);
   const [companyTab, setCompanyTab] = useState<CompanyTab>("market");
   const [signingTarget, setSigningTarget] = useState<SigningTarget | null>(null);
   const [trainingGenre, setTrainingGenre] = useState<Record<number, string>>({});
@@ -398,6 +400,7 @@ export default function Home() {
         setAgencyLedger(save.agencyLedger ?? null);
         setActorHonors(save.actorHonors ?? {});
         setInvestmentClaimedYear(save.investmentClaimedYear ?? null);
+        setRookieRefreshYear(save.rookieRefreshYear ?? null);
         setHistory(save.history ?? []);
       } catch {
         window.localStorage.removeItem(SAVE_KEY);
@@ -452,10 +455,11 @@ export default function Home() {
       agencyLedger,
       actorHonors,
       investmentClaimedYear,
+      rookieRefreshYear,
       history,
     };
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  }, [actorHonors, actorPool, agencyLedger, budget.name, cash, cast, deals, director?.id, directorPool, eventChoice, genre.name, genreMarket, history, investmentClaimedYear, promo.name, reputation, result, revealedDays, saveReady, scriptAnswers, scriptReport, signedTalents, slot.id, stage, studioXp, title, year]);
+  }, [actorHonors, actorPool, agencyLedger, budget.name, cash, cast, deals, director?.id, directorPool, eventChoice, genre.name, genreMarket, history, investmentClaimedYear, promo.name, reputation, result, revealedDays, rookieRefreshYear, saveReady, scriptAnswers, scriptReport, signedTalents, slot.id, stage, studioXp, title, year]);
 
   const studioLevel = Math.min(10, 1 + Math.floor(studioXp / 180));
   const studioXpProgress = studioXp % 180;
@@ -476,7 +480,7 @@ export default function Home() {
   const availableDirectors = useMemo(() => directorPool.filter((item) => item.available !== false), [directorPool]);
   const marketLeader = useMemo(() => [...genreMarket].sort((first, second) => second.heat - first.heat)[0], [genreMarket]);
   const marketRiser = useMemo(() => [...genreMarket].sort((first, second) => (second.heatChange ?? 0) - (first.heatChange ?? 0))[0], [genreMarket]);
-  const rookieMarket = useMemo(() => rookieCandidates.filter((actor) => !signedTalentIds.has(actor.id)).filter((_, index) => (index + year) % 2 === 0).slice(0, 4), [signedTalentIds, year]);
+  const rookieMarket = useMemo(() => buildRookieMarket(year, signedTalentIds, rookieRefreshYear === year), [rookieRefreshYear, signedTalentIds, year]);
   const scriptQuestions = useMemo(() => getScriptQuestions(genre.name, year), [genre.name, year]);
   const scriptScore = scriptReport?.score ?? 0;
   const industryCostIndex = Math.min(1.32, 1 + (year - 1) * .025);
@@ -1152,11 +1156,16 @@ export default function Home() {
               {companyTab === "rookies" && <div className="agency-section">
                 <SectionTitle number="新" title={`第 ${year} 届新人招募`} note="低成本签约，高潜力需要持续培训与作品机会" />
                 <div className="agency-explainer rookie"><b>新人培养模式</b><p>签约费接近于零，但初期不能承担票房号召。潜力决定成长上限，培训和参演共同塑造类型路线。</p></div>
+                <div className="rookie-refresh-bar">
+                  <div><span>SCOUTING REFRESH · 每年一次</span><b>{rookieRefreshYear === year ? "本年度星探名单已刷新" : "观看广告，提高稀有新人出现率"}</b><small>刷新名单固定出现 1 名稀有新人：75% 金框，25% 红框。测试版无需观看广告。</small></div>
+                  <button type="button" disabled={rookieRefreshYear === year} onClick={() => { setRookieRefreshYear(year); setCompanyNotice("星探刷新完成：本届名单已保证出现一名金框或红框新人。本年度不可再次刷新。"); }}>{rookieRefreshYear === year ? "本年已刷新" : "观看广告刷新"}</button>
+                </div>
                 <div className="signing-grid">{rookieMarket.map((actor) => {
                   const quote = rookieContractQuote(actor);
                   const firstPayment = quote.signingFee + quote.annualSalary;
                   const unavailable = signedTalents.length >= rosterCapacity || cash < firstPayment;
-                  return <article className="signing-card rookie-card" key={actor.id}><header><PortraitAvatar person={actor} group="rookie" /><div><b>{actor.name}</b><small>{actorTier(actor.acting, actor.appeal)}级 · 综合 {actor.acting + actor.appeal} · {actor.tag}</small></div><i>{actor.profile.age}岁</i></header><div className="signing-stats"><span>演技 <b>{actor.acting}</b></span><span>号召 <b>{actor.appeal}</b></span><span>潜力 <b>{actor.potential}</b></span></div><p>{actor.genres.join(" · ")} · 成长速度 +{actor.growth}</p><div className="contract-price"><span>签约费 ¥{money(quote.signingFee)}</span><span>年薪 ¥{money(quote.annualSalary)}</span><b>首期 ¥{money(firstPayment)}</b></div><button disabled={unavailable} onClick={() => setSigningTarget({ actor, rookie: actor, origin: "rookie" })}>{signedTalents.length >= rosterCapacity ? "签约名额已满" : cash < firstPayment ? "公司资金不足" : "纳入新人计划"}</button></article>;
+                  const rarityLabel = actor.rarity === "red" ? "SSR · 红框" : actor.rarity === "gold" ? "SR · 金框" : "新锐";
+                  return <article className={`signing-card rookie-card rarity-${actor.rarity}`} key={actor.id}><header><PortraitAvatar person={actor} group="rookie" /><div><b>{actor.name}</b><small>{actorTier(actor.acting, actor.appeal)}级 · 综合 {actor.acting + actor.appeal} · {actor.tag}</small></div><i><strong className="rookie-rarity">{rarityLabel}</strong>{actor.profile.age}岁</i></header><div className="signing-stats"><span>演技 <b>{actor.acting}</b></span><span>号召 <b>{actor.appeal}</b></span><span>潜力 <b>{actor.potential}</b></span></div><p>{actor.genres.join(" · ")} · 成长速度 +{actor.growth}</p><div className="contract-price"><span>签约费 ¥{money(quote.signingFee)}</span><span>年薪 ¥{money(quote.annualSalary)}</span><b>首期 ¥{money(firstPayment)}</b></div><button disabled={unavailable} onClick={() => setSigningTarget({ actor, rookie: actor, origin: "rookie" })}>{signedTalents.length >= rosterCapacity ? "签约名额已满" : cash < firstPayment ? "公司资金不足" : "纳入新人计划"}</button></article>;
                 })}</div>
               </div>}
               <div className="company-danger-zone"><div><span>重新开始</span><b>解散公司并建立全新存档</b><p>将清除资金、等级、电影历史、旗下艺人及全部培养进度。</p></div><button onClick={() => setShowResetConfirm(true)}>解散公司</button></div>
@@ -1224,15 +1233,17 @@ export default function Home() {
 
 function PortraitAvatar({ person, group, large = false, mini = false }: { person: { id: number; name: string; avatar: string }; group: PortraitGroup; large?: boolean; mini?: boolean }) {
   const actorIsFemale = group === "actor" && person.id > 12;
+  const rookieAtlasPath = person.id <= 108 ? "/images/portraits/rookies-anime-atlas-v2.webp" : person.id <= 120 ? "/images/portraits/rookies-anime-atlas-v3.webp" : "/images/portraits/rookies-anime-atlas-v4.webp";
+  const rookieIndex = person.id <= 108 ? person.id - 101 : person.id <= 120 ? person.id - 109 : person.id - 121;
   const atlasPath = group === "director"
     ? "/images/portraits/directors-anime-atlas-v1.webp"
     : group === "rookie"
-      ? "/images/portraits/rookies-anime-atlas-v2.webp"
+      ? rookieAtlasPath
       : actorIsFemale
         ? "/images/portraits/female-actors-anime-atlas-v1.webp"
         : "/images/portraits/male-actors-anime-atlas-v1.webp";
   const atlas = assetUrl(atlasPath);
-  const index = group === "director" ? person.id - 1 : group === "rookie" ? person.id - 101 : actorIsFemale ? person.id - 13 : person.id - 1;
+  const index = group === "director" ? person.id - 1 : group === "rookie" ? rookieIndex : actorIsFemale ? person.id - 13 : person.id - 1;
   const column = index % 4;
   const row = Math.floor(index / 4);
   return <span
