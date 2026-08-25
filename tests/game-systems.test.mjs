@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { calculateCompetitionPressure, generateCompetitors } from "../app/competition-system.ts";
-import { annualInvestmentAmount, buildAudienceScoreCurve, buildContentModel, buildReleaseModel, calculateCareerRewards, investorRevenueShare, studioReachMultiplier } from "../app/economy.ts";
+import { annualInvestmentAmount, buildAudienceScoreCurve, buildContentModel, buildReleaseModel, calculateCareerRewards, investorRevenueShare, projectPaymentDelta, studioReachMultiplier } from "../app/economy.ts";
 import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts";
 import { evaluateScript, getScriptQuestionBank, getScriptQuestions } from "../app/script-engine.ts";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, matureContractQuote, retirementAge, rookieCandidates, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
@@ -127,14 +127,24 @@ test("every rookie enters the signing market between ages 18 and 20", () => {
   assert.equal(currentActorAge(18, 12, 8), 22);
 });
 
+test("project payments deduct only the newly committed cumulative cost", () => {
+  assert.equal(projectPaymentDelta(10000, 0), 10000);
+  assert.equal(projectPaymentDelta(13800, 10000), 3800);
+  assert.equal(projectPaymentDelta(12500, 13800), -1300);
+});
+
 test("annual scouting favors ordinary rookies while the yearly refresh guarantees one rare card", () => {
   const naturalCounts = { ordinary: 0, gold: 0, red: 0 };
+  const naturalYears = { none: 0, gold: 0, red: 0 };
   const refreshCounts = { gold: 0, red: 0 };
-  for (let year = 1; year <= 200; year += 1) {
+  for (let year = 1; year <= 5000; year += 1) {
     const naturalMarket = buildRookieMarket(year);
     assert.equal(naturalMarket.length, 4);
     assert.equal(new Set(naturalMarket.map((rookie) => rookie.id)).size, 4);
     naturalMarket.forEach((rookie) => naturalCounts[rookie.rarity] += 1);
+    const naturalRare = naturalMarket.filter((rookie) => rookie.rarity !== "ordinary");
+    assert.ok(naturalRare.length <= 1);
+    naturalYears[naturalRare.length ? naturalRare[0].rarity : "none"] += 1;
 
     const refreshedMarket = buildRookieMarket(year, new Set(), true);
     assert.equal(refreshedMarket.length, 4);
@@ -145,8 +155,11 @@ test("annual scouting favors ordinary rookies while the yearly refresh guarantee
   }
   assert.ok(naturalCounts.ordinary > naturalCounts.gold * 5);
   assert.ok(naturalCounts.gold > naturalCounts.red);
-  assert.ok(refreshCounts.gold >= 140 && refreshCounts.gold <= 160);
-  assert.equal(refreshCounts.gold + refreshCounts.red, 200);
+  assert.ok(naturalYears.none >= 4400 && naturalYears.none <= 4600);
+  assert.ok(naturalYears.gold >= 350 && naturalYears.gold <= 450);
+  assert.ok(naturalYears.red >= 70 && naturalYears.red <= 130);
+  assert.ok(refreshCounts.gold >= 3650 && refreshCounts.gold <= 3850);
+  assert.equal(refreshCounts.gold + refreshCounts.red, 5000);
   const allGoldSigned = new Set(rookieCandidates.filter((rookie) => rookie.rarity === "gold").map((rookie) => rookie.id));
   assert.equal(buildRookieMarket(1, allGoldSigned, true).filter((rookie) => rookie.rarity === "red").length, 1);
 });

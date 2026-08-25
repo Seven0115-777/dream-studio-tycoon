@@ -82,6 +82,10 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /SOCIAL PULSE/);
   assert.match(page, /PROJECT CONTROL/);
   assert.match(page, /CASTING DATABASE/);
+  assert.match(page, /《\$\{title\}》——\$\{genre\.name\}，剧本评分/);
+  assert.match(page, /commitProjectCost\(currentBudgetCost, 1\)/);
+  assert.match(page, /commitProjectCost\(totalBeforeRelease, 3\)/);
+  assert.match(page, /setCash\(\(value\) => Math\.max\(0, value - outstandingProjectCost/);
   assert.match(page, /TALENT OPERATIONS TERMINAL/);
   assert.match(page, /CAPITAL ACCESS TERMINAL/);
   assert.match(css, /@keyframes feed-rise/);
@@ -131,6 +135,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
   assert.match(css, /\.room-operation-shell \.project-board \{ width: calc\(100% - 24px\); margin: 12px auto;/);
   assert.match(economy, /buildReleaseModel/);
+  assert.match(economy, /export function projectPaymentDelta/);
   assert.match(scriptEngine, /getScriptQuestions/);
   assert.match(scriptEngine, /getScriptQuestionBank/);
   assert.match(scriptEngine, /buildExpansionQuestions/);

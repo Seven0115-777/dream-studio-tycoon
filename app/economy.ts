@@ -56,6 +56,10 @@ export type ContentModel = {
 const clamp = (minimum: number, maximum: number, value: number) => Math.max(minimum, Math.min(maximum, value));
 const STUDIO_SHARE = .34;
 
+export function projectPaymentDelta(targetCost: number, paidCost: number) {
+  return Math.round(targetCost) - Math.round(paidCost);
+}
+
 export function annualInvestmentAmount(year: number) {
   const productionYear = Math.max(1, Math.floor(year));
   if (productionYear === 1) return 0;

@@ -153,11 +153,10 @@ export function buildRookieMarket(year: number, signedIds: ReadonlySet<number> =
     return market;
   }
 
-  for (let slot = 0; slot < 4; slot += 1) {
-    const roll = hash(`${year}:rookie-market-rarity:${slot}`) % 100;
-    const rarity: RookieRarity = roll < 88 ? "ordinary" : roll < 98 ? "gold" : "red";
-    addCandidate(rarity, `${year}:rookie-market:${slot}:${rarity}`);
-  }
+  const naturalRoll = hash(`${year}:rookie-market-rarity`) % 100;
+  const naturalRare: RookieRarity | null = naturalRoll < 90 ? null : naturalRoll < 98 ? "gold" : "red";
+  if (naturalRare) addCandidate(naturalRare, `${year}:rookie-market-rare:${naturalRare}`);
+  for (let slot = market.length; slot < 4; slot += 1) addCandidate("ordinary", `${year}:rookie-market:${slot}:ordinary`);
   return market;
 }
 
