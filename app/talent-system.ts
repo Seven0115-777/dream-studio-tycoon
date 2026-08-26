@@ -50,6 +50,7 @@ export type AgencyLedger = {
   salaryCost: number;
   expiredNames: string[];
   operatingCost?: number;
+  libraryIncome?: number;
   retiredNames?: string[];
   withdrawnNames?: string[];
   talentNews?: TalentNews[];
