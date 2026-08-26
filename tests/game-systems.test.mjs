@@ -4,8 +4,8 @@ import { calculateCompetitionPressure, generateCompetitors } from "../app/compet
 import { annualInvestmentAmount, boxOfficeSettlementTarget, buildAudienceScoreCurve, buildContentModel, buildReleaseModel, calculateCareerRewards, determineAwards, investorRevenueShare, projectPaymentDelta, scheduleRiskMultiplier, settleAnnualCompanyCash, studioReachMultiplier, yearlyOperatingCost } from "../app/economy.ts";
 import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts";
 import { evaluateScript, getScriptQuestionBank, getScriptQuestions, rewriteScript } from "../app/script-engine.ts";
-import { coreStylesByGenre, deriveScriptBuild, describeBuildChange, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, resolveEnsembleCast, resolveEnsembleDownstream, scriptConnections, summarizeScriptDownstream } from "../app/script-build-system.ts";
-import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, judgeAwards, resolveProductionChain } from "../app/game-systems.ts";
+import { coreStylesByGenre, deriveScriptBuild, describeBuildChange, describeCoreStyle, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, resolveEnsembleCast, resolveEnsembleDownstream, scriptConnections, summarizeScriptDownstream } from "../app/script-build-system.ts";
+import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, resolveProductionChain } from "../app/game-systems.ts";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
 
 const releaseBase = {
@@ -381,6 +381,22 @@ test("all eighteen core styles are reachable and can activate more than one viab
   }
 });
 
+test("all core cards separate real advantages from construction costs", () => {
+  const styles = Object.values(coreStylesByGenre).flat();
+  assert.equal(styles.length, 18);
+  for (const style of styles) {
+    const description = describeCoreStyle(style);
+    assert.ok(description.advantages.length > 0);
+    assert.ok(description.costs.length > 0);
+    assert.doesNotMatch(description.advantages.join(" "), /成本 \+|开画 -|口碑 -|长线留存 -|明星开画权重 -/);
+    assert.doesNotMatch(description.costs.join(" "), /成本 -|质量 \+|口碑 \+|开画 \+|长线留存 \+|评审 \+|片库长尾 \+/);
+  }
+  const hunt = describeCoreStyle(coreStylesByGenre["犯罪悬疑"].find((style) => style.id === "crime-hunt"));
+  assert.match(hunt.advantages.join(" "), /开画 \+3|明星开画权重 \+12%/);
+  assert.doesNotMatch(hunt.advantages.join(" "), /成本/);
+  assert.match(hunt.costs.join(" "), /核心主演成本 \+6%/);
+});
+
 test("cross-style connections stay competitive and no core route strictly dominates its genre", () => {
   let competitiveCrossStyles = 0;
   for (const [genre, styles] of Object.entries(coreStylesByGenre)) {
@@ -729,6 +745,14 @@ test("production contexts produce broad chain coverage without breaking tradeoff
       }
     }
   }
+});
+
+test("only the latest production decision stays editable until the next stage locks it", () => {
+  assert.deepEqual([0, 1, 2].map((index) => getProductionChoiceState([null, null, null], index)), ["editable", "waiting", "waiting"]);
+  assert.deepEqual([0, 1, 2].map((index) => getProductionChoiceState(["safe", null, null], index)), ["editable", "editable", "waiting"]);
+  assert.deepEqual([0, 1, 2].map((index) => getProductionChoiceState(["bold", "safe", null], index)), ["locked", "editable", "editable"]);
+  assert.deepEqual([0, 1, 2].map((index) => getProductionChoiceState(["bold", "safe", "bold"], index)), ["locked", "locked", "editable"]);
+  assert.equal(getProductionChoiceState(["safe", null, "bold"], 0), "locked", "later legacy decisions also lock earlier stages");
 });
 
 test("library income is capped, includes the just-finished film, and offsets but does not erase later operating pressure", () => {

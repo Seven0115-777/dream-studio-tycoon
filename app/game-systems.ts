@@ -94,6 +94,7 @@ export function evaluateAnnualGoal(goal: AnnualGoal, input: GoalResultInput & { 
 }
 
 export type ProductionChoice = "safe" | "bold";
+export type ProductionChoiceState = "editable" | "locked" | "waiting";
 export type ProductionStage = "开机" | "中期" | "后期";
 export type ProductionEffect = {
   label: string;
@@ -116,6 +117,13 @@ export type ProductionChainEvent = {
   bold: ProductionEffect;
 };
 export type ProductionTotals = { quality: number; market: number; cost: number; morale: number; scheduleRisk: number; resolved: number; notes: string[] };
+
+export function getProductionChoiceState(choices: (ProductionChoice | null)[], index: number): ProductionChoiceState {
+  if (index < 0 || index >= choices.length) return "waiting";
+  if (choices.slice(0, index).some((choice) => !choice)) return "waiting";
+  if (choices.slice(index + 1).some(Boolean)) return "locked";
+  return "editable";
+}
 
 const productionTemplates: Record<ProductionStage, Omit<ProductionChainEvent, "id" | "stage">[]> = {
   开机: [

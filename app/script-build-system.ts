@@ -169,6 +169,37 @@ export function getCoreStyles(genre: string) {
   return coreStylesByGenre[genre] ?? coreStylesByGenre["犯罪悬疑"];
 }
 
+export function describeCoreStyle(style: CoreStyle) {
+  const effect = style.downstream;
+  const percent = (value: number) => Math.round(Math.abs(value - 1) * 100);
+  const signed = (value: number) => `${value > 0 ? "+" : ""}${Number(value.toFixed(2))}`;
+  const advantages: string[] = [];
+  const costs: string[] = [];
+  if (effect.ensemble) advantages.push("解锁群像班底");
+  if (effect.budgetCostMultiplier < 1) advantages.push(`制作成本 -${percent(effect.budgetCostMultiplier)}%`);
+  if (effect.budgetCostMultiplier > 1) costs.push(`制作成本 +${percent(effect.budgetCostMultiplier)}%`);
+  if (effect.castingCostMultiplier < 1) advantages.push(`核心主演成本 -${percent(effect.castingCostMultiplier)}%`);
+  if (effect.castingCostMultiplier > 1) costs.push(`核心主演成本 +${percent(effect.castingCostMultiplier)}%`);
+  if (effect.contentQuality > 0) advantages.push(`成片质量 ${signed(effect.contentQuality)}`);
+  if (effect.contentQuality < 0) costs.push(`成片质量 ${signed(effect.contentQuality)}`);
+  if (effect.wordOfMouth > 0) advantages.push(`口碑 ${signed(effect.wordOfMouth)}`);
+  if (effect.wordOfMouth < 0) costs.push(`口碑 ${signed(effect.wordOfMouth)}`);
+  if (effect.openingPower > 0) advantages.push(`开画 ${signed(effect.openingPower)}`);
+  if (effect.openingPower < 0) costs.push(`开画 ${signed(effect.openingPower)}`);
+  if (effect.retention > 0) advantages.push(`长线留存 +${Number((effect.retention * 100).toFixed(1))}%`);
+  if (effect.retention < 0) costs.push(`长线留存 ${Number((effect.retention * 100).toFixed(1))}%`);
+  if (effect.starPowerMultiplier > 1) advantages.push(`明星开画权重 +${percent(effect.starPowerMultiplier)}%`);
+  if (effect.starPowerMultiplier < 1) costs.push(`明星开画权重 -${percent(effect.starPowerMultiplier)}%`);
+  if (effect.awardPicture > 0) advantages.push(`影片评审 +${effect.awardPicture}`);
+  if (effect.awardDirector > 0) advantages.push(`导演评审 +${effect.awardDirector}`);
+  if (effect.awardActing > 0) advantages.push(`表演评审 +${effect.awardActing}`);
+  if (effect.libraryMultiplier > 1) advantages.push(`片库长尾 +${percent(effect.libraryMultiplier)}%`);
+  return {
+    advantages: advantages.length ? advantages : ["无额外数值优势"],
+    costs: costs.length ? costs : ["无额外数值代价"],
+  };
+}
+
 export function decorateRouteOption<T extends { profile: string }>(genre: string, option: T): T & BuildOptionMeta {
   const styles = getCoreStyles(genre);
   const connectionKey = keywordByProfile[option.profile] ?? "类型质感";
@@ -236,7 +267,8 @@ export function deriveScriptBuild(answers: Record<string, string>, questions: Bu
   const buildName = selectedCore ? `${selectedCore.name}·${suffix}` : "尚未确定核心流派";
   const coreActivated = Boolean(selectedCore && alignedChoices >= 2);
   const downstream = mergeScriptDownstreams(...(coreActivated && selectedCore ? [selectedCore.downstream] : []), ...connections.map((connection) => connection.downstream));
-  const appliedEffects = [...(coreActivated && selectedCore ? selectedCore.effects.map((effect) => `${selectedCore.name}：${effect}`) : []), ...connections.flatMap((connection) => connection.effects.map((effect) => `${connection.name}：${effect}`))];
+  const coreDescription = selectedCore ? describeCoreStyle(selectedCore) : null;
+  const appliedEffects = [...(coreActivated && selectedCore && coreDescription ? [`${selectedCore.name}优势：${coreDescription.advantages.join("、")}`, `${selectedCore.name}代价：${coreDescription.costs.join("、")}`] : []), ...connections.flatMap((connection) => connection.effects.map((effect) => `${connection.name}：${effect}`))];
   return {
     core: selectedCore,
     keywords,

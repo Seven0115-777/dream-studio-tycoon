@@ -7,7 +7,7 @@ import { annualInvestmentAmount, boxOfficeSettlementTarget, buildContentModel, b
 import { evolveDirectorMarket, evolveGenreMarket, type MarketDirector } from "./market-system";
 import { evaluateScript, getScriptQuestions, rewriteScript, type RewriteDirection, type ScriptReport } from "./script-engine";
 import { deriveScriptBuild, describeBuildChange, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, resolveEnsembleCast, resolveEnsembleDownstream, summarizeScriptDownstream, type EnsembleCastId } from "./script-build-system";
-import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, judgeAwards, resolveProductionChain, type AwardNomination, type GoalOutcome, type ProductionChoice } from "./game-systems";
+import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, resolveProductionChain, type AwardNomination, type GoalOutcome, type ProductionChoice } from "./game-systems";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, externalAgencyIncome, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
 
 type Genre = { name: string; icon: string; heat: number; color: string; heatChange?: number; marketNote?: string };
@@ -57,6 +57,7 @@ type LocalGameSave = {
   deals: Record<number, Deal>;
   eventChoice?: "safe" | "bold" | null;
   productionChoices?: (ProductionChoice | null)[];
+  productionLocked?: boolean;
   annualGoalId?: string | null;
   annualGoalLocked?: boolean;
   rewriteCost?: number;
@@ -327,6 +328,7 @@ export default function Home() {
   const [actorQuery, setActorQuery] = useState("");
   const [eventChoice, setEventChoice] = useState<"safe" | "bold" | null>(null);
   const [productionChoices, setProductionChoices] = useState<(ProductionChoice | null)[]>([null, null, null]);
+  const [productionLocked, setProductionLocked] = useState(false);
   const [annualGoalId, setAnnualGoalId] = useState<string | null>(null);
   const [annualGoalLocked, setAnnualGoalLocked] = useState(false);
   const [rewriteCost, setRewriteCost] = useState(0);
@@ -406,6 +408,7 @@ export default function Home() {
         setDeals(save.deals ?? {});
         setEventChoice(save.eventChoice ?? null);
         setProductionChoices(save.productionChoices ?? [save.eventChoice ?? null, null, null]);
+        setProductionLocked(save.productionLocked ?? restoredStage >= 4);
         setAnnualGoalId(save.annualGoalId ?? null);
         setAnnualGoalLocked(save.annualGoalLocked ?? Boolean(save.annualGoalId && save.stage > 0));
         setRewriteCost(save.rewriteCost ?? 0);
@@ -484,6 +487,7 @@ export default function Home() {
       deals,
       eventChoice,
       productionChoices,
+      productionLocked,
       annualGoalId,
       annualGoalLocked,
       rewriteCost,
@@ -505,7 +509,7 @@ export default function Home() {
       history,
     };
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  }, [actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, deals, director?.id, directorPool, ensembleCastId, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, productionChoices, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieRefreshYear, saveReady, scriptAnswers, scriptReport, signedTalents, slot.id, stage, studioXp, title, year]);
+  }, [actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, deals, director?.id, directorPool, ensembleCastId, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, productionChoices, productionLocked, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieRefreshYear, saveReady, scriptAnswers, scriptReport, signedTalents, slot.id, stage, studioXp, title, year]);
 
   const studioLevel = Math.min(10, 1 + Math.floor(studioXp / 180));
   const studioXpProgress = studioXp % 180;
@@ -1028,6 +1032,7 @@ export default function Home() {
     setDeals({});
     setEventChoice(null);
     setProductionChoices([null, null, null]);
+    setProductionLocked(false);
     setResult(null);
     setProjectCostPaid(0);
     setBoxOfficeCashCredited(0);
@@ -1110,7 +1115,7 @@ export default function Home() {
               <SectionTitle number="1" title="片名与电影题材" note="市场热度会随档期与年份变化" />
               <label className="title-input"><span>项目片名</span><input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={12} /></label>
               <div className="genre-grid">
-                {genreMarket.map((item) => <button key={item.name} className={`genre-card ${genre.name === item.name ? "selected" : ""}`} onClick={() => { setGenre(item); setScriptAnswers({}); setScriptReport(null); setScriptFeedback(""); setScriptFeedbackQuestionId(null); setRewriteCost(0); setRewriteMarketDelta(0); setCast([]); setDeals({}); setEventChoice(null); setProductionChoices([null, null, null]); }} aria-pressed={genre.name === item.name}>
+                {genreMarket.map((item) => <button key={item.name} className={`genre-card ${genre.name === item.name ? "selected" : ""}`} onClick={() => { setGenre(item); setScriptAnswers({}); setScriptReport(null); setScriptFeedback(""); setScriptFeedbackQuestionId(null); setRewriteCost(0); setRewriteMarketDelta(0); setCast([]); setDeals({}); setEventChoice(null); setProductionChoices([null, null, null]); setProductionLocked(false); }} aria-pressed={genre.name === item.name}>
                   <span className="genre-icon" style={{ background: genre.name === item.name ? item.color : undefined }}>{item.icon}</span><strong>{item.name}</strong><small>市场热度 · {item.marketNote ?? "本年行情"}</small><div className="heat-row"><div className="heat"><i style={{ width: `${item.heat}%`, background: item.color }} /></div><b>{item.heat}</b></div>{item.heatChange !== undefined && <span className={`market-shift ${item.heatChange >= 0 ? "up" : "down"}`}>{item.heatChange >= 0 ? "↑" : "↓"}{Math.abs(item.heatChange)}</span>}{genre.name === item.name && <span className="picked">已选择</span>}
                 </button>)}
               </div>
@@ -1145,7 +1150,7 @@ export default function Home() {
                       const priorBuild = deriveScriptBuild(scriptAnswers, scriptQuestions.slice(0, questionIndex) as Parameters<typeof deriveScriptBuild>[1], genre.name);
                       const canRepairExistingFlaw = Boolean(option.repairsFlaw && priorBuild.unresolvedFlaws.includes(option.repairsFlaw));
                       const functionLabel = option.routeFunction === "core" ? "核心流派" : option.routeFunction === "venture" ? "冒险牌" : option.routeFunction === "convert" ? "转化牌" : "强化牌";
-                      return <button key={option.id} className={selected ? "selected" : ""} onClick={() => selectScriptOption(question.id, option.id)} aria-pressed={selected}><b>{option.label}</b><small>{option.description}</small><span className="option-keyword"><em>#{option.keyword}</em><i>{functionLabel}</i></span><span className="option-tradeoff"><em>收益 · {option.upside}</em><em>关系 · {option.relation}</em>{option.addsFlaw && <em className="flaw">缺陷 · {option.addsFlaw}</em>}{option.repairsFlaw && <em className="repair">{canRepairExistingFlaw ? "修复" : "结构补强 / 预防"} · {option.repairsFlaw}</em>}</span>{selected && <i>已勾选</i>}</button>;
+                      return <button key={option.id} className={selected ? "selected" : ""} onClick={() => selectScriptOption(question.id, option.id)} aria-pressed={selected}><b>{option.label}</b><small>{option.description}</small><span className="option-keyword"><em>#{option.keyword}</em><i>{functionLabel}</i></span>{option.routeFunction === "core" ? <span className="option-tradeoff option-core-effects"><em className="advantage">核心优势 · {option.coreAdvantages}</em><em className="cost">构筑代价 · {option.coreCosts}</em><em>激活条件 · {option.relation}</em></span> : <span className="option-tradeoff"><em>收益 · {option.upside}</em><em>关系 · {option.relation}</em>{option.addsFlaw && <em className="flaw">缺陷 · {option.addsFlaw}</em>}{option.repairsFlaw && <em className="repair">{canRepairExistingFlaw ? "修复" : "结构补强 / 预防"} · {option.repairsFlaw}</em>}</span>}{selected && <i>已勾选</i>}</button>;
                     })}</div>{scriptFeedbackQuestionId === question.id && scriptFeedback && <p className="build-inline-feedback" aria-live="polite">本次选择变化 · {scriptFeedback}</p>}
                   </section>)}
                 </div>
@@ -1205,18 +1210,19 @@ export default function Home() {
                 <div className="production-stats"><header><div><span>PRODUCTION MONITOR</span><h3>制作状态</h3></div><i><b /> REC</i></header><Metric label="剧本质量" value={scriptScore} /><Metric label="题材适配" value={Math.min(100, 64 + fit)} /><Metric label="班底实力" value={Math.round(((director?.skill ?? 0) + (ensemblePerformance?.acting ?? cast.reduce((sum, item) => sum + item.acting, 0) / 2)) / 2)} /><Metric label={ensembleActive ? "群像协调" : "主演默契"} value={performanceCoordination} /><Metric label="预算保障" value={budget.name === "大片级" ? 94 : budget.name === "标准制作" ? 78 : 61} /><div className="crew-line"><span>DIRECTOR <b>{director?.name}</b></span><span>CAST <b>{cast.map((item) => item.name).join(" / ")}{ensembleActive ? ` + ${selectedEnsembleCast.name}` : ""}</b></span></div></div>
               </div>
               <SectionTitle number="3" title="三段式片场决策" note="开机 → 中期 → 后期，前一选择会改变下一阶段" />
+              <p className="production-choice-rule">当前最新阶段可反复改选；选择下一阶段后，前一阶段锁定。后期在点击“完成制作并送审”前仍可调整。</p>
               <div className="production-chain-summary"><div><span>已处理</span><b>{productionTotals.resolved}/3</b></div><div><span>累计质量</span><b>{productionTotals.quality >= 0 ? "+" : ""}{productionTotals.quality}</b></div><div><span>市场热度</span><b>{productionTotals.market >= 0 ? "+" : ""}{productionTotals.market}</b></div><div><span>士气 / 档期风险</span><b>{productionTotals.morale >= 0 ? "+" : ""}{productionTotals.morale} / {productionTotals.scheduleRisk >= 0 ? "+" : ""}{productionTotals.scheduleRisk}</b></div></div>
-              <div className="event-chain">{productionChain.map((productionEvent, index) => { const locked = index > productionTotals.resolved; const selected = productionChoices[index]; return <div className={`event-card ${locked ? "locked" : ""}`} key={productionEvent.id}><header><span>0{index + 1}</span><div><small>{productionEvent.stage}阶段</small><b>{productionEvent.title}</b></div><i>{selected ? "已决策" : locked ? "等待前序" : "待处理"}</i></header><p>{productionEvent.description}</p>{index > 0 && productionTotals.notes[index - 1] && <div className="causal-note">因上一阶段：{productionTotals.notes[index - 1]}</div>}<div className="event-options">{(["safe", "bold"] as const).map((choice) => <button disabled={locked || Boolean(selected)} key={choice} className={selected === choice ? "selected" : ""} onClick={() => setProductionChoices((current) => current.map((value, choiceIndex) => choiceIndex === index ? choice : value))}><b>{productionEvent[choice].label}</b><small>{productionEvent[choice].hint}{productionEvent[choice].cost ? ` · 基础成本 ¥${money(Math.round(productionEvent[choice].cost * industryCostIndex))}` : ""}</small><em>{productionEvent[choice].consequence}</em></button>)}</div></div>; })}</div>
-              <ActionBar label={`${budget.name} · ${genre.name}`} detail={`制作与主创 ¥${money(totalBeforeRelease)} · 完片保险 ¥${money(overheadCost)}${currentEventCost ? ` · 事件追加 ¥${money(currentEventCost)}` : ""}${rewriteCost ? ` · 改稿 ¥${money(rewriteCost)}` : ""}`} button="完成制作并送审" disabled={productionTotals.resolved < 3 || projectPaymentDelta(totalBeforeRelease + overheadCost + currentEventCost + rewriteCost, projectCostPaid) > cash} onClick={() => commitProjectCost(totalBeforeRelease + overheadCost + currentEventCost + rewriteCost, 4)} back={() => moveToStage(2)} />
+              <div className="event-chain">{productionChain.map((productionEvent, index) => { const choiceState = productionLocked ? "locked" : getProductionChoiceState(productionChoices, index); const selected = productionChoices[index]; const disabled = choiceState !== "editable"; const status = choiceState === "waiting" ? "等待前序" : choiceState === "locked" ? "已锁定" : selected ? "可改选" : "可选择"; return <div className={`event-card ${disabled ? "locked" : ""}`} key={productionEvent.id}><header><span>0{index + 1}</span><div><small>{productionEvent.stage}阶段</small><b>{productionEvent.title}</b></div><i>{status}</i></header><p>{productionEvent.description}</p>{index > 0 && productionTotals.notes[index - 1] && <div className="causal-note">因上一阶段：{productionTotals.notes[index - 1]}</div>}<div className="event-options">{(["safe", "bold"] as const).map((choice) => <button type="button" disabled={disabled} aria-pressed={selected === choice} key={choice} className={selected === choice ? "selected" : ""} onClick={() => setProductionChoices((current) => current.map((value, choiceIndex) => choiceIndex === index ? choice : value))}><b>{productionEvent[choice].label}</b><small>{productionEvent[choice].hint}{productionEvent[choice].cost ? ` · 基础成本 ¥${money(Math.round(productionEvent[choice].cost * industryCostIndex))}` : ""}</small><em>{productionEvent[choice].consequence}</em></button>)}</div></div>; })}</div>
+              <ActionBar label={`${budget.name} · ${genre.name}`} detail={`制作与主创 ¥${money(totalBeforeRelease)} · 完片保险 ¥${money(overheadCost)}${currentEventCost ? ` · 事件追加 ¥${money(currentEventCost)}` : ""}${rewriteCost ? ` · 改稿 ¥${money(rewriteCost)}` : ""}`} button="完成制作并送审" disabled={productionTotals.resolved < 3 || projectPaymentDelta(totalBeforeRelease + overheadCost + currentEventCost + rewriteCost, projectCostPaid) > cash} onClick={() => { setProductionLocked(true); commitProjectCost(totalBeforeRelease + overheadCost + currentEventCost + rewriteCost, 4); }} back={() => moveToStage(2)} />
             </>
           )}
 
           {!utilityRoom && stage === 4 && (
             <>
-              <PageHead code="RELEASE PLAN" title="好电影，还需要一个" accent="好时机。" sub="选择上映档期和宣发规模，市场会给出最终答案。" stamp="待定档" />
-              <SectionTitle number="1" title="选择上映档期" note="热档期拥有更高上限，也意味着更多强敌" />
-              <div className="slot-grid">{slots.map((item) => <button key={item.id} className={slot.id === item.id ? "selected" : ""} onClick={() => setSlot(item)}><span>{item.date}</span><strong>{item.name}</strong><small>{item.note}</small><i>竞争：{item.competition}</i></button>)}</div>
-              <SectionTitle number="竞" title={`${slot.name}同期竞品`} note={`${slotCompetitors.length} 部影片已提前锁定核心排片`} />
+              <PageHead code="RELEASE PLAN" title="好电影，还需要一个" accent="好时机。" sub="先预选一个上映档期，可反复比较候选；上映时只会确认当前预选档期。" stamp="待定档" />
+              <SectionTitle number="1" title="预选一个上映档期" note="候选可反复比较，最终只确认一个档期" />
+              <div className="slot-grid">{slots.map((item) => { const selected = slot.id === item.id; return <button type="button" key={item.id} className={selected ? "selected" : ""} onClick={() => setSlot(item)} aria-pressed={selected}><span>{item.date}</span><strong>{item.name}</strong><small>{item.note}</small><i>{selected ? "已预选" : "点击预选"} · 竞争：{item.competition}</i></button>; })}</div>
+              <SectionTitle number="竞" title={`当前预选：${slot.name}同期竞品`} note={`${slotCompetitors.length} 部影片已提前锁定核心排片`} />
               <div className="competition-summary"><div><span>预计观众分流</span><b>-{Math.round(competitionPressure * 100)}%</b></div><p>{slotCompetitors.filter((movie) => movie.tier === "S" || movie.tier === "SS").length ? `本档期有 ${slotCompetitors.filter((movie) => movie.tier === "S" || movie.tier === "SS").length} 部 S/SS 级强敌；高口碑可以在上映后逐步夺回排片。` : "本档期没有S级统治者，仍需警惕同类型影片分流。"}</p></div>
               <div className="competitor-grid">{slotCompetitors.map((movie) => <CompetitorCard key={movie.id} movie={movie} />)}</div>
               <SectionTitle number="2" title="制定宣发计划" note="宣发成本将在上映前支付" />
@@ -1226,7 +1232,7 @@ export default function Home() {
               {investmentClaimed && <div className="financing-obligation"><span>投</span><div><b>本年度已引入外部投资 ¥{money(annualInvestment)}</b><p>上映后投资方抽取片方34%分账收入的10%，回收上限为 ¥{money(annualInvestment * 1.5)}；剩余收入才进入项目结算。</p></div></div>}
               <div className="ticket-formula"><div><span>内容底盘</span><b>剧本 {scriptScore}</b><small>剧本低于65分时，最终观众评分最高只能达到6.5</small></div><div><span>剧本引擎</span><b>{scriptBuild.buildName}</b><small>{summarizeScriptDownstream(scriptBuild.downstream).join(" · ")}</small></div><div><span>主创号召</span><b>{Math.round(((director?.appeal ?? 0) + cast.reduce((sum, actor) => sum + actor.appeal, 0)) / 3)}</b><small>演员评级额外提供开画 +{castTierOpeningBonus.toFixed(1)}，但不能替代口碑</small></div><div><span>发行放大</span><b>×{(slot.boost * promo.boost).toFixed(2)}</b><small>高宣发抬升开画，但投入越高边际收益越低</small></div><div><span>同期竞争</span><b>-{Math.round(competitionPressure * 100)}%</b><small>竞品分流开画观众，并持续争夺排片</small></div><div><span>档期风险影响</span><b>×{scheduleEfficiency.toFixed(2)}</b><small>{productionTotals.scheduleRisk > 0 ? `累计 +${productionTotals.scheduleRisk} 风险，每点降低 2.5% 开画效率，最多降低 10%` : "风险已控制；负风险不会额外提高票房"}</small></div><div className="studio-factor"><span>制片人基本盘</span><b>×{studioReach.toFixed(2)}</b><small>只强化开画，等级与声望影响会逐日衰减</small></div></div>
               <div className="cost-breakdown"><span>制作与主创 <b>¥{money(totalBeforeRelease)}</b></span><span>完片保险与管理 <b>¥{money(overheadCost)}</b></span><span>宣发及片场追加 <b>¥{money(currentPromoCost + currentEventCost)}</b></span>{rewriteCost > 0 && <span>剧本改稿 <b>¥{money(rewriteCost)}</b></span>}<strong>总投资 ¥{money(totalCost)}</strong></div>
-              <ActionBar label={`${slot.name} · ${promo.name}`} detail={`总投资 ¥${money(totalCost)} · 待支付宣发 ¥${money(Math.max(0, projectPaymentDelta(totalCost, projectCostPaid)))} · 同档分流 ${Math.round(competitionPressure * 100)}%`} button="全国上映，揭晓票房" disabled={projectPaymentDelta(totalCost, projectCostPaid) > cash} onClick={simulate} back={() => moveToStage(3)} />
+              <ActionBar label={`当前预选：${slot.name} · ${promo.name}`} detail={`最终只确认 ${slot.name} · 总投资 ¥${money(totalCost)} · 待支付宣发 ¥${money(Math.max(0, projectPaymentDelta(totalCost, projectCostPaid)))} · 同档分流 ${Math.round(competitionPressure * 100)}%`} button={`确认${slot.name}上映，揭晓票房`} disabled={projectPaymentDelta(totalCost, projectCostPaid) > cash} onClick={simulate} back={() => moveToStage(3)} />
             </>
           )}
 

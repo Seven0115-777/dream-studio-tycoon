@@ -1,7 +1,7 @@
-import { decorateRouteOption, deriveScriptBuild, getCoreStyles, scoreScriptBuild, type BuildOptionMeta, type ScriptBuild } from "./script-build-system.ts";
+import { decorateRouteOption, deriveScriptBuild, describeCoreStyle, getCoreStyles, scoreScriptBuild, type BuildOptionMeta, type ScriptBuild } from "./script-build-system.ts";
 
 export type ScriptScores = { story: number; character: number; market: number; originality: number };
-export type ScriptOption = { id: string; label: string; description: string; scores: ScriptScores; profile: string; upside: string; tradeoff: string } & Partial<BuildOptionMeta>;
+export type ScriptOption = { id: string; label: string; description: string; scores: ScriptScores; profile: string; upside: string; tradeoff: string; coreAdvantages?: string; coreCosts?: string } & Partial<BuildOptionMeta>;
 export type ScriptQuestion = { id: string; title: string; prompt: string; options: ScriptOption[] };
 export type ScriptReport = ScriptScores & { baseScore: number; levelBonus: number; score: number; grade: string; verdict: string; tags: string[]; risks: string[]; build?: ScriptBuild; rewritten?: boolean; rewriteDirection?: RewriteDirection };
 export type RewriteDirection = "structure" | "character" | "commercial";
@@ -157,20 +157,25 @@ export function getScriptQuestions(genre: string, year: number): ScriptQuestion[
     id: `core-${getCoreStyles(genre)[0].id.split("-")[0]}`,
     title: "核心流派",
     prompt: `这部${genre}首先要向观众做出哪一种核心承诺？`,
-    options: getCoreStyles(genre).map((style) => ({
-      id: style.id,
-      label: style.name,
-      description: style.pitch,
-      scores: profiles.balanced,
-      profile: "core",
-      upside: style.effects[0],
-      tradeoff: style.effects[1] ?? "需要后续路线牌完成引擎",
-      keyword: style.keyword,
-      connectionKey: style.keyword,
-      alignment: [style.id],
-      routeFunction: "core",
-      relation: `确定「${style.engine}」引擎；后续至少两次同向强化后激活`,
-    })),
+    options: getCoreStyles(genre).map((style) => {
+      const description = describeCoreStyle(style);
+      return {
+        id: style.id,
+        label: style.name,
+        description: style.pitch,
+        scores: profiles.balanced,
+        profile: "core",
+        upside: description.advantages.join(" · "),
+        tradeoff: description.costs.join(" · "),
+        coreAdvantages: description.advantages.join(" · "),
+        coreCosts: description.costs.join(" · "),
+        keyword: style.keyword,
+        connectionKey: style.keyword,
+        alignment: [style.id],
+        routeFunction: "core" as const,
+        relation: `确定「${style.engine}」引擎；后续至少两次同向强化后激活`,
+      };
+    }),
   };
   return [coreQuestion, ...routeQuestions];
 }
