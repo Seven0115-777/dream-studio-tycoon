@@ -42,7 +42,7 @@ test("server-renders the visual movie studio hub", async () => {
 });
 
 test("keeps the mobile shell separate from simulation systems", async () => {
-  const [page, layout, mobileUi, css, economy, scriptEngine, scriptBuildSystem, gameSystems, talentSystem, competitionSystem, marketSystem, staticEntry] = await Promise.all([
+  const [page, layout, mobileUi, css, economy, scriptEngine, scriptBuildSystem, gameSystems, ipSystem, talentSystem, competitionSystem, marketSystem, staticEntry] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/mobile-ui.tsx", import.meta.url), "utf8"),
@@ -51,6 +51,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
     readFile(new URL("../app/script-engine.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/script-build-system.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/game-systems.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/ip-system.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/talent-system.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/competition-system.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/market-system.ts", import.meta.url), "utf8"),
@@ -59,6 +60,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
 
   assert.match(page, /from "\.\/components\/mobile-ui"/);
   assert.match(page, /from "\.\/economy"/);
+  assert.match(page, /from "\.\/ip-system"/);
   assert.match(page, /from "\.\/script-engine"/);
   assert.match(page, /window\.scrollTo\(\{ top: 0, left: 0, behavior: "auto" \}\)/);
   assert.match(page, /演员评级额外提供开画/);
@@ -71,6 +73,21 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /第二制片年起可正式引入外部投资/);
   assert.match(page, /每个制片年一次/);
   assert.match(page, /片方回款的10%/);
+  assert.match(page, /选择本年项目来源/);
+  assert.match(ipSystem, /正统续集/);
+  assert.match(ipSystem, /角色衍生/);
+  assert.match(ipSystem, /重启 \/ 诗选/);
+  assert.match(page, /系列主创策略实时结算/);
+  assert.match(page, /最终口碑会根据成片评分是否兑现期待再结算/);
+  assert.match(page, /IP回归主演溢价/);
+  assert.match(page, /ipRoute: ipSelection\.route/);
+  assert.match(page, /ipSourceId: ipSelection\.sourceId/);
+  assert.match(ipSystem, /projectedFatigue >= 65/);
+  assert.match(ipSystem, /returningCastPremiumRate = \.12/);
+  assert.match(ipSystem, /expectationWordOfMouth/);
+  assert.match(css, /\.operation-project \.ip-source-grid/);
+  assert.match(css, /\.operation-casting \.ip-casting-impact/);
+  assert.match(css, /\.operation-agency \.ip-library-list/);
   assert.match(page, /投资方分成/);
   assert.doesNotMatch(page, /查看完整题库与所有答案分值/);
   assert.doesNotMatch(page, /className="option-score"/);

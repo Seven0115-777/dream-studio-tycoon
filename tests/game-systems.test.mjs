@@ -6,6 +6,7 @@ import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts
 import { evaluateScript, getScriptQuestionBank, getScriptQuestions, rewriteScript } from "../app/script-engine.ts";
 import { coreStylesByGenre, deriveScriptBuild, describeBuildChange, describeCoreStyle, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, resolveEnsembleCast, resolveEnsembleDownstream, scriptConnections, summarizeScriptDownstream } from "../app/script-build-system.ts";
 import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, resolveProductionChain } from "../app/game-systems.ts";
+import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, normalizeFilmHistory, resolveIpProjectEffects } from "../app/ip-system.ts";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
 
 const releaseBase = {
@@ -22,6 +23,68 @@ const releaseBase = {
   competitionPressure: 0,
   totalCost: 15000,
 };
+
+const hitIpSource = {
+  id: "film-1-fire",
+  year: 1,
+  title: "烽火行动",
+  genre: "动作",
+  gross: 70000,
+  awards: 1,
+  score: 8.7,
+  quality: 89,
+  breakEvenGross: 40000,
+  castIds: [11, 12],
+  coreStyleId: "dual-protagonist",
+  traits: ["双雄对决", "终局反转"],
+  brandHeat: 72,
+  fatigue: 25,
+};
+
+test("successful films become IP sources while legacy records receive safe fallbacks", () => {
+  const history = normalizeFilmHistory([
+    hitIpSource,
+    { title: "旧日样片", gross: 20000, awards: 0 },
+  ]);
+  assert.equal(history.length, 2);
+  assert.ok(history.every((film) => film.id && film.castIds && film.traits));
+  assert.deepEqual(eligibleIpSources(history).map((film) => film.title), ["烽火行动"]);
+});
+
+test("sequel, spinoff and reboot create distinct franchise tradeoffs", () => {
+  const history = [hitIpSource];
+  const input = { genre: "动作", castIds: [11, 99], coreStyleId: "dual-protagonist" };
+  const sequel = resolveIpProjectEffects(history, { route: "sequel", sourceId: hitIpSource.id }, input);
+  const spinoff = resolveIpProjectEffects(history, { route: "spinoff", sourceId: hitIpSource.id }, input);
+  const reboot = resolveIpProjectEffects(history, { route: "reboot", sourceId: hitIpSource.id }, input);
+
+  assert.ok(sequel.openingPower > spinoff.openingPower && spinoff.openingPower > reboot.openingPower);
+  assert.equal(sequel.inheritedTraits.length, 2);
+  assert.equal(spinoff.inheritedTraits.length, 1);
+  assert.equal(reboot.inheritedTraits.length, 0);
+  assert.deepEqual([sequel.qualityBonus, spinoff.qualityBonus, reboot.qualityBonus], [2, 1, 0]);
+  assert.ok(sequel.projectedFatigue > spinoff.projectedFatigue);
+  assert.ok(reboot.projectedFatigue < hitIpSource.fatigue);
+  assert.equal(sequel.returningCastPremiumRate, .12);
+  assert.equal(spinoff.returningCastPremiumRate, .05);
+  assert.equal(reboot.returningCastPremiumRate, 0);
+  assert.equal(calculateReturningCastPremium(sequel, [{ actorId: 11, fee: 4000 }, { actorId: 99, fee: 3000 }]), 480);
+});
+
+test("franchise expectations change word of mouth and persist cross-year series state", () => {
+  assert.equal(expectationWordOfMouth(9.1, 8.7), 1);
+  assert.equal(expectationWordOfMouth(8.2, 8.7), -1);
+  assert.equal(expectationWordOfMouth(7.8, 8.7), -2);
+  const selection = { route: "sequel", sourceId: hitIpSource.id };
+  const effects = resolveIpProjectEffects([hitIpSource], selection, { genre: "动作", castIds: [11, 12], coreStyleId: "dual-protagonist" });
+  const record = createFilmHistoryRecord({ year: 2, title: "烽火行动：续章", genre: "动作", gross: 90000, awards: 2, score: 9.1, quality: 93, breakEvenGross: 50000, directorId: 3, castIds: [11, 12], coreStyleId: "dual-protagonist", buildName: "双雄终局", traits: ["双雄对决", "终局反转"], libraryMultiplier: 1.12, selection, effects });
+  assert.equal(record.seriesId, hitIpSource.id);
+  assert.equal(record.seriesTitle, hitIpSource.title);
+  assert.equal(record.seriesEntry, 2);
+  assert.ok(record.brandHeat > hitIpSource.brandHeat);
+  assert.ok(record.fatigue < effects.projectedFatigue);
+  assert.ok(record.libraryMultiplier > 1.12);
+});
 
 test("high scores rise while low scores lose box office", () => {
   const high = buildReleaseModel({ ...releaseBase, audienceScore: 9, wordOfMouth: 92, openingPower: 78 });
