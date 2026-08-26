@@ -16,6 +16,7 @@ export type ReleaseModelInput = {
   totalCost: number;
   investmentAmount?: number;
   scheduleRisk?: number;
+  retentionBonus?: number;
 };
 
 export type ReleaseModel = {
@@ -46,6 +47,8 @@ export type ContentModelInput = {
   morale: number;
   directorMatched?: boolean;
   actorFitRate?: number;
+  scriptQualityBonus?: number;
+  scriptWordOfMouthBonus?: number;
 };
 
 export type ContentModel = {
@@ -122,9 +125,9 @@ export function buildContentModel(input: ContentModelInput): ContentModel {
   const effectiveActing = input.acting * (.88 + actorFitRate * .12);
   const mismatchPenalty = (input.directorMatched === false ? 2.5 : 0) + (1 - actorFitRate) * 3.5;
   const chemistryBonus = Math.max(-2, (input.chemistry - 60) * .12);
-  const quality = clamp(40, 99, Math.round(4 + input.scriptScore * .38 + effectiveDirectorSkill * .17 + effectiveActing * .15 + input.budgetQuality * .65 + input.fit * .25 + input.eventBonus + chemistryBonus + input.morale * .12 - mismatchPenalty));
+  const quality = clamp(40, 99, Math.round(4 + input.scriptScore * .38 + effectiveDirectorSkill * .17 + effectiveActing * .15 + input.budgetQuality * .65 + input.fit * .25 + input.eventBonus + chemistryBonus + input.morale * .12 + (input.scriptQualityBonus ?? 0) - mismatchPenalty));
   const weakScriptPenalty = Math.max(0, 72 - input.scriptScore) * .9;
-  const wordOfMouth = clamp(30, 99, Math.round(input.scriptScore * .4 + effectiveDirectorSkill * .15 + effectiveActing * .15 + quality * .25 + input.chemistry * .05 - weakScriptPenalty - mismatchPenalty * .35));
+  const wordOfMouth = clamp(30, 99, Math.round(input.scriptScore * .4 + effectiveDirectorSkill * .15 + effectiveActing * .15 + quality * .25 + input.chemistry * .05 + (input.scriptWordOfMouthBonus ?? 0) - weakScriptPenalty - mismatchPenalty * .35));
   const scoreCeiling = input.scriptScore < 65 ? 6.5 : input.scriptScore < 72 ? 7.2 : input.scriptScore < 78 ? 8 : 9.8;
   const audienceScore = Number(clamp(4.5, scoreCeiling, (quality * .45 + wordOfMouth * .55) / 10).toFixed(1));
   return { quality, wordOfMouth, audienceScore, scoreCeiling };
@@ -165,7 +168,7 @@ export function buildReleaseModel(input: ReleaseModelInput): ReleaseModel {
   }
 
   const monthDays = [...weekDays];
-  const tailRetention = clamp(.72, .96, .72 + (input.audienceScore - 6) * .055 + (input.wordOfMouth - 70) * .002 - frontloadPenalty * .35 - input.competitionPressure * .08);
+  const tailRetention = clamp(.72, .96, .72 + (input.audienceScore - 6) * .055 + (input.wordOfMouth - 70) * .002 + (input.retentionBonus ?? 0) - frontloadPenalty * .35 - input.competitionPressure * .08);
   const calendarFactors = [.84, .88, .93, .97, 1.08, 1.18, 1.02];
   const daySevenBase = weekDays[6];
   for (let day = 7; day < 30; day += 1) {

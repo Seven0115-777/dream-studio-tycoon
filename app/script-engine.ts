@@ -1,7 +1,9 @@
+import { decorateRouteOption, deriveScriptBuild, getCoreStyles, scoreScriptBuild, type BuildOptionMeta, type ScriptBuild } from "./script-build-system.ts";
+
 export type ScriptScores = { story: number; character: number; market: number; originality: number };
-export type ScriptOption = { id: string; label: string; description: string; scores: ScriptScores; profile: string; upside: string; tradeoff: string };
+export type ScriptOption = { id: string; label: string; description: string; scores: ScriptScores; profile: string; upside: string; tradeoff: string } & Partial<BuildOptionMeta>;
 export type ScriptQuestion = { id: string; title: string; prompt: string; options: ScriptOption[] };
-export type ScriptReport = ScriptScores & { baseScore: number; levelBonus: number; score: number; grade: string; verdict: string; tags: string[]; risks: string[]; rewritten?: boolean; rewriteDirection?: RewriteDirection };
+export type ScriptReport = ScriptScores & { baseScore: number; levelBonus: number; score: number; grade: string; verdict: string; tags: string[]; risks: string[]; build?: ScriptBuild; rewritten?: boolean; rewriteDirection?: RewriteDirection };
 export type RewriteDirection = "structure" | "character" | "commercial";
 export type RewriteResult = { report: ScriptReport; cost: number; marketHeatDelta: number; timeCost: string };
 
@@ -148,10 +150,29 @@ export function getScriptQuestions(genre: string, year: number): ScriptQuestion[
   const commonOrder = deterministicOrder(commonQuestions, `${genre}:common-order`);
   const safeYear = Math.max(1, Math.floor(year));
   const specificStart = ((safeYear - 1) * 4) % specificOrder.length;
-  const commonStart = ((safeYear - 1) * 2) % commonOrder.length;
+  const commonStart = (safeYear - 1) % commonOrder.length;
   const specific = Array.from({ length: 4 }, (_, index) => specificOrder[(specificStart + index) % specificOrder.length]);
-  const common = Array.from({ length: 2 }, (_, index) => commonOrder[(commonStart + index) % commonOrder.length]);
-  return [specific[0], common[0], specific[1], specific[2], common[1], specific[3]];
+  const routeQuestions = [specific[0], commonOrder[commonStart], specific[1], specific[2], specific[3]].map((question) => ({ ...question, options: question.options.map((option) => decorateRouteOption(genre, option)) }));
+  const coreQuestion: ScriptQuestion = {
+    id: `core-${getCoreStyles(genre)[0].id.split("-")[0]}`,
+    title: "核心流派",
+    prompt: `这部${genre}首先要向观众做出哪一种核心承诺？`,
+    options: getCoreStyles(genre).map((style) => ({
+      id: style.id,
+      label: style.name,
+      description: style.pitch,
+      scores: profiles.balanced,
+      profile: "core",
+      upside: style.effects[0],
+      tradeoff: style.effects[1] ?? "需要后续路线牌完成引擎",
+      keyword: style.keyword,
+      connectionKey: style.keyword,
+      alignment: [style.id],
+      routeFunction: "core",
+      relation: `确定「${style.engine}」引擎；后续至少两次同向强化后激活`,
+    })),
+  };
+  return [coreQuestion, ...routeQuestions];
 }
 
 function levelWritingBonus(level: number) {
@@ -159,7 +180,9 @@ function levelWritingBonus(level: number) {
 }
 
 export function evaluateScript(answers: Record<string, string>, questionIds: string[], genre: string, studioLevel: number): ScriptReport {
-  const questionMap = new Map([...commonQuestions, ...Object.values(genreQuestions).flat()].map((question) => [question.id, question]));
+  const routeBank = [...commonQuestions, ...(genreQuestions[genre] ?? genreQuestions["犯罪悬疑"])].map((question) => ({ ...question, options: question.options.map((option) => decorateRouteOption(genre, option)) }));
+  const currentCore = getScriptQuestions(genre, 1)[0];
+  const questionMap = new Map([currentCore, ...routeBank].map((question) => [question.id, question]));
   const selected = questionIds.map((id) => {
     const question = questionMap.get(id);
     return question?.options.find((option) => option.id === answers[id]);
@@ -169,17 +192,14 @@ export function evaluateScript(answers: Record<string, string>, questionIds: str
   const totals: ScriptScores = { story: 0, character: 0, market: 0, originality: 0 };
   selected.forEach((option) => (Object.keys(totals) as (keyof ScriptScores)[]).forEach((key) => { totals[key] += option.scores[key]; }));
   const dimensions = (Object.keys(totals) as (keyof ScriptScores)[]).reduce((report, key) => ({ ...report, [key]: Math.round(totals[key] / selected.length * 5) }), {} as ScriptScores);
-  const genreBonus = genre === "合家欢喜剧" && dimensions.market >= 86 ? 2 : genre === "历史传记" && dimensions.character >= 86 ? 2 : genre === "犯罪悬疑" && dimensions.story >= 86 ? 2 : genre === "科幻冒险" && dimensions.originality >= 86 ? 2 : genre === "都市爱情" && dimensions.character >= 86 ? 2 : genre === "动作战争" && dimensions.market >= 86 ? 2 : 0;
-  const profileCounts = selected.reduce<Record<string, number>>((counts, option) => ({ ...counts, [option.profile]: (counts[option.profile] ?? 0) + 1 }), {});
-  const dominantCount = Math.max(...Object.values(profileCounts));
-  const craftAdjustment = selected.reduce((sum, option) => sum + profileFeedback[option.profile as Profile].craft, 0) * .8;
-  const coherenceBonus = dominantCount >= 4 ? dominantCount - 3 : 0;
-  const balanceBonus = Math.min(...Object.values(dimensions)) >= 72 ? 1 : Math.min(...Object.values(dimensions)) < 55 ? -3 : 0;
-  const baseScore = Math.max(55, Math.min(94, Math.round(dimensions.story * .3 + dimensions.character * .27 + dimensions.market * .25 + dimensions.originality * .18 + genreBonus + 2 + craftAdjustment + coherenceBonus + balanceBonus)));
+  const buildQuestions = questionIds.map((id) => questionMap.get(id)).filter((question): question is ScriptQuestion => Boolean(question));
+  const build = deriveScriptBuild(answers, buildQuestions as Parameters<typeof deriveScriptBuild>[1], genre);
+  const dimensionAverage = (dimensions.story + dimensions.character + dimensions.market + dimensions.originality) / 4;
+  const baseScore = scoreScriptBuild(build, dimensionAverage);
   const levelBonus = levelWritingBonus(studioLevel);
   const score = Math.min(94, baseScore + levelBonus);
   const grade = score >= 90 ? "S" : score >= 82 ? "A" : score >= 72 ? "B" : score >= 62 ? "C" : "D";
-  return { ...dimensions, baseScore, levelBonus, score, grade, verdict: score >= 90 ? "年度级潜力剧本" : score >= 82 ? "具备头部项目潜质" : score >= 72 ? "结构完整，可以推进" : score >= 62 ? "存在亮点，但需要明星托举" : "创作方向仍需打磨", tags: [...new Set(selected.map((option) => option.upside))].slice(0, 3), risks: [...new Set(selected.map((option) => option.tradeoff))].slice(0, 3) };
+  return { ...dimensions, baseScore, levelBonus, score, grade, verdict: `${build.buildName} · ${score >= 90 ? "年度级潜力" : score >= 82 ? "头部项目潜质" : score >= 72 ? "构筑完整，可以推进" : score >= 62 ? "存在亮点，仍需补强" : "核心表达尚未闭环"}`, tags: [...new Set([...build.finalTraits, ...selected.map((option) => option.upside)])].slice(0, 4), risks: [...new Set([...build.unresolvedFlaws, ...build.conflicts, ...selected.map((option) => option.tradeoff)])].slice(0, 4), build };
 }
 
 function gradeFor(score: number) {
@@ -195,6 +215,16 @@ export function rewriteScript(report: ScriptReport, direction: RewriteDirection,
   } as const;
   const plan = plans[direction];
   const score = Math.min(94, report.score + plan.score);
+  const repairedTarget = direction === "structure" ? "伏笔缺口" : direction === "character" ? "人物单薄" : "表达套路";
+  const build = report.build ? {
+    ...report.build,
+    keywords: [...new Set([...report.build.keywords, plan.label])],
+    unresolvedFlaws: report.build.unresolvedFlaws.filter((flaw) => flaw !== repairedTarget),
+    repairedFlaws: [...new Set([...report.build.repairedFlaws, ...(report.build.unresolvedFlaws.includes(repairedTarget) ? [repairedTarget] : [])])],
+    finalTraits: [...new Set([...report.build.finalTraits, plan.label])],
+    events: [...report.build.events, report.build.unresolvedFlaws.includes(repairedTarget) ? `改稿修复：${repairedTarget}` : `改稿补强：${plan.label}`],
+    buildName: `${report.build.core?.name ?? "剧本"}·${plan.label}`,
+  } : undefined;
   return {
     report: {
       ...report,
@@ -204,11 +234,12 @@ export function rewriteScript(report: ScriptReport, direction: RewriteDirection,
       originality: Math.max(0, Math.min(100, report.originality + plan.originality)),
       score,
       grade: gradeFor(score),
-      verdict: score >= 90 ? "年度级潜力剧本" : score >= 82 ? "具备头部项目潜质" : score >= 72 ? "结构完整，可以推进" : score >= 62 ? "存在亮点，但需要明星托举" : "创作方向仍需打磨",
+      verdict: build ? `${build.buildName} · ${score >= 90 ? "年度级潜力" : score >= 82 ? "头部项目潜质" : "完成定向补强"}` : score >= 90 ? "年度级潜力剧本" : score >= 82 ? "具备头部项目潜质" : score >= 72 ? "结构完整，可以推进" : score >= 62 ? "存在亮点，但需要明星托举" : "创作方向仍需打磨",
       tags: [...new Set([...(report.tags ?? []), plan.label])].slice(0, 4),
       risks: [...new Set([...(report.risks ?? []), `${plan.timeCost} · 市场热度 ${plan.marketHeatDelta >= 0 ? "+" : ""}${plan.marketHeatDelta}`])].slice(0, 4),
       rewritten: true,
       rewriteDirection: direction,
+      build,
     },
     cost: plan.cost,
     marketHeatDelta: plan.marketHeatDelta,

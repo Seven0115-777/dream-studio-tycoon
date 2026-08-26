@@ -6,6 +6,7 @@ import { calculateCompetitionPressure, generateCompetitors, type CompetitorMovie
 import { annualInvestmentAmount, boxOfficeSettlementTarget, buildContentModel, buildReleaseModel, calculateCareerRewards, projectPaymentDelta, scheduleRiskMultiplier, settleAnnualCompanyCash, studioReachMultiplier, yearlyOperatingCost } from "./economy";
 import { evolveDirectorMarket, evolveGenreMarket, type MarketDirector } from "./market-system";
 import { evaluateScript, getScriptQuestions, rewriteScript, type RewriteDirection, type ScriptReport } from "./script-engine";
+import { deriveScriptBuild, describeBuildChange, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, resolveEnsembleCast, resolveEnsembleDownstream, summarizeScriptDownstream, type EnsembleCastId } from "./script-build-system";
 import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, judgeAwards, resolveProductionChain, type AwardNomination, type GoalOutcome, type ProductionChoice } from "./game-systems";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, externalAgencyIncome, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
 
@@ -14,7 +15,7 @@ type Director = MarketDirector;
 type Actor = AgencyActor;
 type DailyReport = { day: number; boxOffice: number; change: number | null; audienceScore: number; positiveRate: number; momentum: string; headline: string; audienceReaction: string; internetReaction: string; hotTopic: string };
 type PublicityContext = { director: Director; cast: Actor[]; genre: string; quality: number; honors: Record<number, string[]> };
-type Result = { quality: number; gross: number; profit: number; score: number; audience: number; days: number[]; monthDays: number[]; weekGross: number; tailGross: number; studioRevenue: number; investorShare?: number; investmentAmount?: number; successBonus: number; breakEvenGross: number; overheadCost: number; dailyReports: DailyReport[]; awards: string[]; nominations?: AwardNomination[]; awardCap?: number; goalOutcome?: GoalOutcome; xpGain: number; reputationGain: number; reachUsed: number; wordOfMouth: number; openingPower: number; retention: number; trend: string; trendNote: string; competitionPressure: number; scheduleRisk?: number; scheduleEfficiency?: number };
+type Result = { quality: number; gross: number; profit: number; score: number; audience: number; days: number[]; monthDays: number[]; weekGross: number; tailGross: number; studioRevenue: number; investorShare?: number; investmentAmount?: number; successBonus: number; breakEvenGross: number; overheadCost: number; dailyReports: DailyReport[]; awards: string[]; nominations?: AwardNomination[]; awardCap?: number; goalOutcome?: GoalOutcome; xpGain: number; reputationGain: number; reachUsed: number; wordOfMouth: number; openingPower: number; retention: number; trend: string; trendNote: string; competitionPressure: number; scheduleRisk?: number; scheduleEfficiency?: number; libraryMultiplier?: number; buildName?: string };
 type ActorProfile = AgencyProfile;
 type Deal = { fee: number; morale: number; label: string };
 type CompanyTab = "roster" | "market" | "rookies";
@@ -52,6 +53,7 @@ type LocalGameSave = {
   directorPool?: Director[];
   actorPool: Actor[];
   castIds: number[];
+  ensembleCastId?: EnsembleCastId;
   deals: Record<number, Deal>;
   eventChoice?: "safe" | "bold" | null;
   productionChoices?: (ProductionChoice | null)[];
@@ -73,7 +75,7 @@ type LocalGameSave = {
   rookieAlumniIds?: number[];
   expiryReminderDismissedYear?: number | null;
   projectCostPaid?: number;
-  history: { title: string; gross: number; awards: number }[];
+  history: { title: string; gross: number; awards: number; libraryMultiplier?: number }[];
 };
 
 const SAVE_KEY = "dream-studio-save-v1";
@@ -310,11 +312,14 @@ export default function Home() {
   const [budget, setBudget] = useState(budgets[1]);
   const [scriptAnswers, setScriptAnswers] = useState<Record<string, string>>({});
   const [scriptReport, setScriptReport] = useState<ScriptReport | null>(null);
+  const [scriptFeedback, setScriptFeedback] = useState("");
+  const [scriptFeedbackQuestionId, setScriptFeedbackQuestionId] = useState<string | null>(null);
   const [evaluatingScript, setEvaluatingScript] = useState(false);
   const [director, setDirector] = useState<Director | null>(null);
   const [directorPool, setDirectorPool] = useState<Director[]>(directors);
   const [actorPool, setActorPool] = useState<Actor[]>(actors);
   const [cast, setCast] = useState<Actor[]>([]);
+  const [ensembleCastId, setEnsembleCastId] = useState<EnsembleCastId>("lean");
   const [deals, setDeals] = useState<Record<number, Deal>>({});
   const [negotiating, setNegotiating] = useState<Actor | null>(null);
   const [negotiationError, setNegotiationError] = useState("");
@@ -329,7 +334,7 @@ export default function Home() {
   const [slot, setSlot] = useState(slots[2]);
   const [promo, setPromo] = useState(marketing[1]);
   const [result, setResult] = useState<Result | null>(null);
-  const [history, setHistory] = useState<{ title: string; gross: number; awards: number }[]>([]);
+  const [history, setHistory] = useState<{ title: string; gross: number; awards: number; libraryMultiplier?: number }[]>([]);
   const [revealedDays, setRevealedDays] = useState(0);
   const [boxOfficeCashCredited, setBoxOfficeCashCredited] = useState(0);
   const [boxOfficeSettlementLocked, setBoxOfficeSettlementLocked] = useState(false);
@@ -397,6 +402,7 @@ export default function Home() {
         setDirector(restoredDirectors.find((item) => item.id === save.directorId) ?? null);
         setActorPool(restoredPool);
         setCast((save.castIds ?? []).map((id) => restoredPool.find((actor) => actor.id === id)).filter((actor): actor is Actor => Boolean(actor)));
+        setEnsembleCastId(normalizeEnsembleCast(save.ensembleCastId));
         setDeals(save.deals ?? {});
         setEventChoice(save.eventChoice ?? null);
         setProductionChoices(save.productionChoices ?? [save.eventChoice ?? null, null, null]);
@@ -474,6 +480,7 @@ export default function Home() {
       directorPool,
       actorPool,
       castIds: cast.map((actor) => actor.id),
+      ensembleCastId,
       deals,
       eventChoice,
       productionChoices,
@@ -498,7 +505,7 @@ export default function Home() {
       history,
     };
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  }, [actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, deals, director?.id, directorPool, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, productionChoices, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieRefreshYear, saveReady, scriptAnswers, scriptReport, signedTalents, slot.id, stage, studioXp, title, year]);
+  }, [actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, deals, director?.id, directorPool, ensembleCastId, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, productionChoices, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieRefreshYear, saveReady, scriptAnswers, scriptReport, signedTalents, slot.id, stage, studioXp, title, year]);
 
   const studioLevel = Math.min(10, 1 + Math.floor(studioXp / 180));
   const studioXpProgress = studioXp % 180;
@@ -524,13 +531,19 @@ export default function Home() {
   const marketRiser = useMemo(() => [...genreMarket].sort((first, second) => (second.heatChange ?? 0) - (first.heatChange ?? 0))[0], [genreMarket]);
   const rookieMarket = useMemo(() => buildRookieMarket(year, unavailableRookieIds, rookieRefreshYear === year), [rookieRefreshYear, unavailableRookieIds, year]);
   const scriptQuestions = useMemo(() => getScriptQuestions(genre.name, year), [genre.name, year]);
+  const scriptBuildPreview = useMemo(() => deriveScriptBuild(scriptAnswers, scriptQuestions as Parameters<typeof deriveScriptBuild>[1], genre.name), [genre.name, scriptAnswers, scriptQuestions]);
   const annualGoalCandidates = useMemo(() => generateAnnualGoals(year, genreMarket), [genreMarket, year]);
   const annualGoal = annualGoalCandidates.find((goal) => goal.id === annualGoalId) ?? null;
   const scriptScore = scriptReport?.score ?? 0;
+  const scriptBuild = scriptReport?.build ?? scriptBuildPreview;
+  const scriptEffects = getScriptDownstream(scriptReport);
   const industryCostIndex = Math.min(1.32, 1 + (year - 1) * .025);
-  const currentBudgetCost = Math.round(budget.value * industryCostIndex);
+  const currentBudgetCost = Math.round(budget.value * industryCostIndex * scriptEffects.budgetCostMultiplier);
   const currentPromoCost = Math.round(promo.value * industryCostIndex);
-  const talentCost = Math.round((director?.fee ?? 0) * TALENT_COST_SCALE) + cast.reduce((sum, item) => sum + (deals[item.id]?.fee ?? Math.round(item.fee * TALENT_COST_SCALE)), 0);
+  const ensembleActive = scriptEffects.ensemble;
+  const selectedEnsembleCast = ensembleCastOptions.find((option) => option.id === ensembleCastId) ?? ensembleCastOptions[0];
+  const ensembleCost = ensembleActive ? Math.round(selectedEnsembleCast.cost * industryCostIndex) : 0;
+  const talentCost = Math.round((Math.round((director?.fee ?? 0) * TALENT_COST_SCALE) + cast.reduce((sum, item) => sum + (deals[item.id]?.fee ?? Math.round(item.fee * TALENT_COST_SCALE)), 0)) * scriptEffects.castingCostMultiplier) + ensembleCost;
   const totalBeforeRelease = currentBudgetCost + talentCost;
   const productionChain = useMemo(() => generateProductionChain(cast.map((actor) => actor.id), year, { genre: genre.name, budget: budget.name }), [budget.name, cast, genre.name, year]);
   const productionTotals = useMemo(() => resolveProductionChain(productionChain, productionChoices), [productionChain, productionChoices]);
@@ -541,10 +554,14 @@ export default function Home() {
   const slotCompetitors = useMemo(() => generateCompetitors(slot.id, year, actorPool.map((actor) => ({ id: actor.id, name: actor.name, acting: actor.acting, appeal: actor.appeal, tier: getActorProfile(actor).tier })), cast.map((actor) => actor.id)), [actorPool, cast, slot.id, year]);
   const competitionPressure = calculateCompetitionPressure(slotCompetitors);
   const chemistry = cast.length === 2 ? chemistryScore(cast[0], cast[1]) : null;
+  const leadActing = cast.length ? cast.reduce((sum, item) => sum + item.acting + (deals[item.id]?.morale ?? 0) * .2, 0) / cast.length : 0;
+  const ensemblePerformance = ensembleActive && director && cast.length === 2 ? resolveEnsembleCast(ensembleCastId, leadActing, chemistry ?? 60, director.skill, director.trait) : null;
+  const performanceCoordination = ensemblePerformance?.coordination ?? chemistry ?? 60;
+  const ensembleDownstream = resolveEnsembleDownstream(scriptEffects, ensemblePerformance);
   const averageMorale = cast.length ? cast.reduce((sum, actor) => sum + (deals[actor.id]?.morale ?? 0), 0) / cast.length : 0;
   const castTierOpeningBonus = cast.length ? cast.reduce((sum, actor) => sum + tierOpeningBonus(getActorProfile(actor).tier), 0) / cast.length : 0;
   const performanceLead = cast.length ? [...cast].sort((first, second) => second.acting + (deals[second.id]?.morale ?? 0) * .2 - first.acting - (deals[first.id]?.morale ?? 0) * .2)[0] : null;
-  const projectedLibraryHistory = useMemo(() => result ? [{ title, gross: result.gross, awards: result.awards.length }, ...history].slice(0, 3) : history.slice(0, 3), [history, result, title]);
+  const projectedLibraryHistory = useMemo(() => result ? [{ title, gross: result.gross, awards: result.awards.length, libraryMultiplier: result.libraryMultiplier }, ...history].slice(0, 3) : history.slice(0, 3), [history, result, title]);
   const projectedLibraryIncome = calculateLibraryIncome(projectedLibraryHistory);
   const libraryGross = projectedLibraryHistory.reduce((sum, film) => sum + film.gross, 0);
   const libraryAwards = projectedLibraryHistory.reduce((sum, film) => sum + film.awards, 0);
@@ -827,6 +844,18 @@ export default function Home() {
     }
   }
 
+  function selectScriptOption(questionId: string, optionId: string) {
+    const before = deriveScriptBuild(scriptAnswers, scriptQuestions as Parameters<typeof deriveScriptBuild>[1], genre.name);
+    const nextAnswers = { ...scriptAnswers, [questionId]: optionId };
+    const after = deriveScriptBuild(nextAnswers, scriptQuestions as Parameters<typeof deriveScriptBuild>[1], genre.name);
+    setScriptAnswers(nextAnswers);
+    setScriptFeedback(describeBuildChange(before, after));
+    setScriptFeedbackQuestionId(questionId);
+    setScriptReport(null);
+    setRewriteCost(0);
+    setRewriteMarketDelta(0);
+  }
+
   function applyRewrite(direction: RewriteDirection) {
     if (!scriptReport || scriptReport.rewritten) return;
     const rewritten = rewriteScript(scriptReport, direction, false);
@@ -839,19 +868,20 @@ export default function Home() {
     if (!director || cast.length !== 2) return;
     const outstandingProjectCost = projectPaymentDelta(totalCost, projectCostPaid);
     if (outstandingProjectCost > cash) return;
-    const acting = cast.reduce((sum, item) => sum + item.acting + (deals[item.id]?.morale ?? 0) * .2, 0) / cast.length;
-    const appeal = (director.appeal + cast.reduce((sum, item) => sum + item.appeal, 0)) / 3;
-    const content = buildContentModel({ scriptScore, directorSkill: director.skill, acting, budgetQuality: budget.quality, fit, eventBonus: productionTotals.quality, chemistry: chemistry ?? 60, morale: averageMorale + productionTotals.morale, directorMatched: director.genres.includes(genre.name), actorFitRate: cast.filter((actor) => actor.genres.includes(genre.name)).length / cast.length });
+    const acting = ensemblePerformance?.acting ?? leadActing;
+    const leadAppeal = cast.reduce((sum, item) => sum + item.appeal, 0) / cast.length;
+    const appeal = ensemblePerformance ? director.appeal * .25 + leadAppeal * .75 * ensembleDownstream.starPowerMultiplier : director.appeal / 3 + leadAppeal * 2 / 3 * scriptEffects.starPowerMultiplier;
+    const content = buildContentModel({ scriptScore, directorSkill: director.skill, acting, budgetQuality: budget.quality, fit, eventBonus: productionTotals.quality, chemistry: performanceCoordination, morale: averageMorale + productionTotals.morale, directorMatched: director.genres.includes(genre.name), actorFitRate: cast.filter((actor) => actor.genres.includes(genre.name)).length / cast.length, scriptQualityBonus: ensembleDownstream.qualityBonus, scriptWordOfMouthBonus: ensembleDownstream.wordOfMouthBonus });
     const { quality, wordOfMouth, audienceScore: roundedScore } = content;
     const genreSlotBonus = (slot.id === "spring" && genre.name === "合家欢喜剧") || (slot.id === "summer" && genre.name === "科幻冒险") ? 1.12 : 1;
-    const openingPower = Math.min(99, Math.round(appeal * .4 + genre.heat * .2 + promo.power * .25 + studioReach / 1.18 * 100 * .12 + castTierOpeningBonus));
-    const release = buildReleaseModel({ appeal, genreHeat: genre.heat, promoCost: promo.value, promoPower: promo.power, budgetCost: budget.value, budgetCapacity: budget.capacity, slotBoost: slot.boost, studioReach, genreSlotBonus, eventMarket: productionTotals.market + rewriteMarketDelta, wordOfMouth, audienceScore: roundedScore, openingPower, competitionPressure, totalCost, investmentAmount: investmentClaimed ? annualInvestment : 0, scheduleRisk: productionTotals.scheduleRisk });
+    const openingPower = Math.min(99, Math.round(appeal * .4 + genre.heat * .2 + promo.power * .25 + studioReach / 1.18 * 100 * .12 + castTierOpeningBonus * scriptEffects.starPowerMultiplier + scriptEffects.openingPower));
+    const release = buildReleaseModel({ appeal, genreHeat: genre.heat, promoCost: promo.value, promoPower: promo.power, budgetCost: budget.value, budgetCapacity: budget.capacity, slotBoost: slot.boost, studioReach, genreSlotBonus, eventMarket: productionTotals.market + rewriteMarketDelta, wordOfMouth, audienceScore: roundedScore, openingPower, competitionPressure, totalCost, investmentAmount: investmentClaimed ? annualInvestment : 0, scheduleRisk: productionTotals.scheduleRisk, retentionBonus: scriptEffects.retention });
     const { weekDays: days, weekScores, monthDays, weekGross, tailGross, gross, studioRevenue, investorShare, successBonus, profit, breakEvenGross } = release;
     const audience = Math.round(gross * 10000 / 42);
     const trend = days[6] > days[0] * 1.05 ? "口碑逆袭" : days[1] > days[0] && days[6] > days[0] * .72 ? "稳健长线" : days[1] < days[0] * .9 && days[6] < days[0] * .55 ? "高开低走" : "正常回落";
     const scheduleNote = productionTotals.scheduleRisk > 0 ? ` 片场累计 +${productionTotals.scheduleRisk} 档期风险，发行效率降至 ${Math.round(release.scheduleEfficiency * 100)}%。` : " 片场档期风险已控制，不产生额外发行增益。";
     const trendNote = `${trend === "口碑逆袭" ? "高口碑抵消同档竞争，路人推荐推动持续增量。" : trend === "高开低走" ? "明星与宣发拉高首日，但剧本口碑未能承接热度。" : trend === "稳健长线" ? "内容、开画与同档竞争较为均衡，首周维持稳定排片。" : "市场热度按常规节奏释放，后续表现由口碑与竞品共同决定。"}${scheduleNote}`;
-    const awardInput = { year, quality, directorSkill: director.skill, fit, acting, chemistry: chemistry ?? 60, audienceScore: roundedScore };
+    const awardInput = { year, quality, directorSkill: director.skill, fit, acting: leadActing, chemistry: performanceCoordination, audienceScore: roundedScore, pictureBonus: ensembleDownstream.pictureBonus, directorBonus: ensembleDownstream.directorBonus, actingBonus: scriptEffects.awardActing, chemistryBonus: ensemblePerformance?.awardBonus ?? 0 };
     const nominations = judgeAwards(awardInput, slotCompetitors);
     const awardCap = awardWinCap(awardInput);
     const awards = nominations.filter((nomination) => nomination.won).map((nomination) => nomination.category);
@@ -861,7 +891,7 @@ export default function Home() {
     const xpGain = careerRewards.xpGain + (goalOutcome?.reward.xp ?? 0);
     const reputationGain = careerRewards.reputationGain + (goalOutcome?.reward.reputation ?? 0);
     const dailyReports = buildDailyReports(title, days, wordOfMouth, weekScores, { director, cast, genre: genre.name, quality, honors: actorHonors });
-    setResult({ quality, gross, profit, score: roundedScore, audience, days, monthDays, weekGross, tailGross, studioRevenue, investorShare, investmentAmount: investmentClaimed ? annualInvestment : 0, successBonus, breakEvenGross, overheadCost, dailyReports, awards, nominations, awardCap, goalOutcome, xpGain, reputationGain, reachUsed: studioReach, wordOfMouth, openingPower, retention: release.retention, trend, trendNote, competitionPressure, scheduleRisk: productionTotals.scheduleRisk, scheduleEfficiency: release.scheduleEfficiency });
+    setResult({ quality, gross, profit, score: roundedScore, audience, days, monthDays, weekGross, tailGross, studioRevenue, investorShare, investmentAmount: investmentClaimed ? annualInvestment : 0, successBonus, breakEvenGross, overheadCost, dailyReports, awards, nominations, awardCap, goalOutcome, xpGain, reputationGain, reachUsed: studioReach, wordOfMouth, openingPower, retention: release.retention, trend, trendNote, competitionPressure, scheduleRisk: productionTotals.scheduleRisk, scheduleEfficiency: release.scheduleEfficiency, libraryMultiplier: ensembleDownstream.libraryMultiplier, buildName: scriptBuild.buildName });
     setStudioXp((value) => value + xpGain);
     setReputation((value) => Math.max(0, value + reputationGain));
     setProjectCostPaid(totalCost);
@@ -876,7 +906,7 @@ export default function Home() {
   }
 
   function nextYear() {
-    const nextHistory = result ? [{ title, gross: result.gross, awards: result.awards.length }, ...history].slice(0, 3) : history.slice(0, 3);
+    const nextHistory = result ? [{ title, gross: result.gross, awards: result.awards.length, libraryMultiplier: result.libraryMultiplier }, ...history].slice(0, 3) : history.slice(0, 3);
     setHistory(nextHistory);
     const libraryIncome = calculateLibraryIncome(nextHistory);
     const followingYear = year + 1;
@@ -986,12 +1016,15 @@ export default function Home() {
     setTitle("未命名计划");
     setScriptAnswers({});
     setScriptReport(null);
+    setScriptFeedback("");
+    setScriptFeedbackQuestionId(null);
     setAnnualGoalId(null);
     setAnnualGoalLocked(false);
     setRewriteCost(0);
     setRewriteMarketDelta(0);
     setDirector(null);
     setCast([]);
+    setEnsembleCastId("lean");
     setDeals({});
     setEventChoice(null);
     setProductionChoices([null, null, null]);
@@ -1077,7 +1110,7 @@ export default function Home() {
               <SectionTitle number="1" title="片名与电影题材" note="市场热度会随档期与年份变化" />
               <label className="title-input"><span>项目片名</span><input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={12} /></label>
               <div className="genre-grid">
-                {genreMarket.map((item) => <button key={item.name} className={`genre-card ${genre.name === item.name ? "selected" : ""}`} onClick={() => { setGenre(item); setScriptAnswers({}); setScriptReport(null); setRewriteCost(0); setRewriteMarketDelta(0); setCast([]); setDeals({}); setEventChoice(null); setProductionChoices([null, null, null]); }} aria-pressed={genre.name === item.name}>
+                {genreMarket.map((item) => <button key={item.name} className={`genre-card ${genre.name === item.name ? "selected" : ""}`} onClick={() => { setGenre(item); setScriptAnswers({}); setScriptReport(null); setScriptFeedback(""); setScriptFeedbackQuestionId(null); setRewriteCost(0); setRewriteMarketDelta(0); setCast([]); setDeals({}); setEventChoice(null); setProductionChoices([null, null, null]); }} aria-pressed={genre.name === item.name}>
                   <span className="genre-icon" style={{ background: genre.name === item.name ? item.color : undefined }}>{item.icon}</span><strong>{item.name}</strong><small>市场热度 · {item.marketNote ?? "本年行情"}</small><div className="heat-row"><div className="heat"><i style={{ width: `${item.heat}%`, background: item.color }} /></div><b>{item.heat}</b></div>{item.heatChange !== undefined && <span className={`market-shift ${item.heatChange >= 0 ? "up" : "down"}`}>{item.heatChange >= 0 ? "↑" : "↓"}{Math.abs(item.heatChange)}</span>}{genre.name === item.name && <span className="picked">已选择</span>}
                 </button>)}
               </div>
@@ -1098,13 +1131,22 @@ export default function Home() {
               </header>
 
               {!scriptReport ? <>
+                <div className="script-build-desk">
+                  <header><div><small>BUILD DESK</small><b>{scriptBuildPreview.core?.name ?? "先选择核心流派"}</b></div><span>{scriptBuildPreview.core ? scriptBuildPreview.alignedChoices >= 2 ? `核心共鸣 2/2 · 已激活${scriptBuildPreview.alignedChoices > 2 ? ` · 同向强化 ${scriptBuildPreview.alignedChoices} 次` : ""}` : `核心共鸣 ${scriptBuildPreview.alignedChoices}/2 · 形成中` : "等待形成连接"}</span></header>
+                  <div className="build-desk-grid"><section><span>核心 / 关键词</span><b>{scriptBuildPreview.core ? `${scriptBuildPreview.core.name} · ${scriptBuildPreview.keywords.join(" / ") || "等待路线牌"}` : "首题将锁定本片核心方向"}</b></section><section><span>已激活组合</span><b>{scriptBuildPreview.activeEngines.join(" / ") || "至少两次同向强化可启动核心引擎"}</b></section><section className={scriptBuildPreview.unresolvedFlaws.length ? "warning" : "resolved"}><span>未解决缺陷</span><b>{scriptBuildPreview.unresolvedFlaws.join(" / ") || "当前没有悬而未决的创作缺口"}</b></section>{scriptBuildPreview.nextConnections.length > 0 && <section><span>下一步可能连接</span><b>{scriptBuildPreview.nextConnections.map((item) => `${item.name}：还缺「${item.missingKeyword}」`).join(" / ")}</b></section>}</div>
+                  <p className="build-order-note">效果按 Q1 → Q6 的叙事顺序结算；点击顺序不会改变缺陷先后关系。</p>
+                  {scriptFeedback && <p className="build-live-feedback">最新构筑反馈 · {scriptFeedback}</p>}
+                </div>
                 <div className="questionnaire">
                   {scriptQuestions.map((question, questionIndex) => <section className="script-question" key={question.id}>
                     <div className="question-head"><span>Q{questionIndex + 1}</span><div><h2>{question.title}</h2><p>{question.prompt}</p></div></div>
                     <div className="script-options">{question.options.map((option) => {
                       const selected = scriptAnswers[question.id] === option.id;
-                      return <button key={option.id} className={selected ? "selected" : ""} onClick={() => { setScriptAnswers((answers) => ({ ...answers, [question.id]: option.id })); setScriptReport(null); setRewriteCost(0); setRewriteMarketDelta(0); }} aria-pressed={selected}><b>{option.label}</b><small>{option.description}</small><span className="option-tradeoff"><em>＋ {option.upside}</em><em>－ {option.tradeoff}</em></span>{selected && <i>已勾选</i>}</button>;
-                    })}</div>
+                      const priorBuild = deriveScriptBuild(scriptAnswers, scriptQuestions.slice(0, questionIndex) as Parameters<typeof deriveScriptBuild>[1], genre.name);
+                      const canRepairExistingFlaw = Boolean(option.repairsFlaw && priorBuild.unresolvedFlaws.includes(option.repairsFlaw));
+                      const functionLabel = option.routeFunction === "core" ? "核心流派" : option.routeFunction === "venture" ? "冒险牌" : option.routeFunction === "convert" ? "转化牌" : "强化牌";
+                      return <button key={option.id} className={selected ? "selected" : ""} onClick={() => selectScriptOption(question.id, option.id)} aria-pressed={selected}><b>{option.label}</b><small>{option.description}</small><span className="option-keyword"><em>#{option.keyword}</em><i>{functionLabel}</i></span><span className="option-tradeoff"><em>收益 · {option.upside}</em><em>关系 · {option.relation}</em>{option.addsFlaw && <em className="flaw">缺陷 · {option.addsFlaw}</em>}{option.repairsFlaw && <em className="repair">{canRepairExistingFlaw ? "修复" : "结构补强 / 预防"} · {option.repairsFlaw}</em>}</span>{selected && <i>已勾选</i>}</button>;
+                    })}</div>{scriptFeedbackQuestionId === question.id && scriptFeedback && <p className="build-inline-feedback" aria-live="polite">本次选择变化 · {scriptFeedback}</p>}
                   </section>)}
                 </div>
                 <div className="script-paper-actions">
@@ -1116,6 +1158,7 @@ export default function Home() {
                   <div className="script-grade-stamp"><small>FINAL DRAFT</small><b>{scriptReport.grade}</b><span>{scriptReport.score} 分</span></div>
                   <div><span>评审结论</span><h2>{scriptReport.verdict}</h2><p>该评分将影响导演与演员的邀约意愿、报价以及最终成片质量。</p></div>
                 </div>
+                {scriptReport.build && <div className="final-build-report"><header><span>FINAL BUILD</span><h3>{scriptReport.build.buildName}</h3><p>{scriptReport.build.core?.pitch}</p></header><div><span>引擎</span><b>{scriptReport.build.activeEngines.join(" / ") || "核心引擎未完全启动"}</b></div><div><span>成片特性</span><b>{scriptReport.build.finalTraits.join(" / ") || "基础类型片"}</b></div><div><span>缺陷与冲突</span><b>{[...scriptReport.build.unresolvedFlaws, ...scriptReport.build.conflicts].join(" / ") || "已完成收束"}</b></div><div className="actual-settlement"><span>实际结算</span><b>{summarizeScriptDownstream(scriptReport.build.downstream).join(" · ")}</b></div><ul>{scriptReport.build.appliedEffects.map((effect) => <li key={effect}>{effect}</li>)}</ul></div>}
                 <div className="script-dimensions"><h3>剧本质量评估</h3><Metric label="叙事结构" value={scriptReport.story} /><Metric label="人物塑造" value={scriptReport.character} /><Metric label="市场潜力" value={scriptReport.market} /><Metric label="原创表达" value={scriptReport.originality} /><div className="producer-writing-bonus"><span>选择基础分 <b>{scriptReport.baseScore}</b></span><i>+</i><span>Lv.{studioLevel} 制片经验 <b>+{scriptReport.levelBonus}</b></span><strong>最终评分 {scriptReport.score}</strong></div><p>制片经验只提供 0—4 分的温和修正；演员仍会比较最终剧本分数与自己的接戏门槛。</p></div>
                 <div className="rewrite-panel"><header><div><span>ONCE PER FILM</span><b>{scriptReport.rewritten ? "本片改稿已完成" : "一次定向改稿机会"}</b></div><small>{scriptReport.rewritten ? `追加成本 ¥${money(rewriteCost)} · 市场热度 ${rewriteMarketDelta >= 0 ? "+" : ""}${rewriteMarketDelta}` : "选择后立即锁定，不能反复刷分"}</small></header><div>{([{ id: "structure", title: "结构重写", effect: "叙事 +7 / 市场 -3", cost: 900 }, { id: "character", title: "人物精修", effect: "人物 +7 / 市场 -2", cost: 700 }, { id: "commercial", title: "商业化改稿", effect: "市场 +8 / 人物 -3 / 原创 -4", cost: 600 }] as const).map((plan) => <button type="button" key={plan.id} disabled={scriptReport.rewritten} onClick={() => applyRewrite(plan.id)}><b>{plan.title}</b><span>{plan.effect}</span><small>追加 ¥{money(plan.cost)}</small></button>)}</div></div>
                 <div className="script-paper-actions result-actions">
@@ -1140,25 +1183,26 @@ export default function Home() {
                 <b className="roster-count">{filteredActors.length} / {actorPool.length}</b>
               </div>
               <div className="fictional-note"><b>虚构艺人库</b><span>所有人物均为架空角色，谐音与联想仅用于娱乐，不代表或影射现实人物的真实经历、能力和评价。</span></div>
+              {ensembleActive && <div className="ensemble-casting"><header><div><span>ENSEMBLE ENGINE</span><b>选择配角班底</b></div><p>仍只选择两位核心主演 / 叙事锚点；班底以整体配置参与成本、表演与奖项。</p></header><div>{ensembleCastOptions.map((option) => <button type="button" key={option.id} className={ensembleCastId === option.id ? "selected" : ""} onClick={() => setEnsembleCastId(option.id)}><b>{option.name}</b><span>{option.cost ? `追加 ¥${money(Math.round(option.cost * industryCostIndex))}` : "零追加成本"}</span><small>{option.description}</small>{ensembleCastId === option.id && <i>已选择</i>}</button>)}</div>{ensemblePerformance ? <p className="ensemble-preview">群像协调度 {ensemblePerformance.coordination} · 综合表演 {ensemblePerformance.acting.toFixed(1)} · {ensemblePerformance.synergy}</p> : <p className="ensemble-preview">可先选择班底；选定导演和两位叙事锚点后显示协调度、综合表演与导演联动。</p>}</div>}
               <div className="talent-grid">{filteredActors.map((item) => <TalentCard key={item.id} person={item} selected={cast.some((actor) => actor.id === item.id)} onClick={() => requestActor(item)} year={year} deal={deals[item.id]} scriptScore={scriptScore} ownedContract={signedTalents.find((contract) => contract.actorId === item.id)} honorTitle={actorHonorTitle(item, actorHonors)} />)}</div>
               {!filteredActors.length && <div className="empty-roster">没有找到符合条件的演员，换个关键词试试。</div>}
               {cast.length > 0 && <div className="cast-dynamics">
-                <div><span>已签约主演</span><b>{cast.map((actor) => `${actor.name}（${deals[actor.id]?.label}）`).join(" / ")}</b></div>
-                <div><span>组合默契</span><b>{chemistry ?? "待第二位主演"}{chemistry ? ` · ${chemistry >= 88 ? "天生搭档" : chemistry >= 74 ? "值得期待" : "首次磨合"}` : ""}</b></div>
+                <div><span>{ensembleActive ? "核心主演 / 叙事锚点" : "已签约主演"}</span><b>{cast.map((actor) => `${actor.name}（${deals[actor.id]?.label}）`).join(" / ")}</b></div>
+                <div><span>{ensembleActive ? "群像协调度" : "组合默契"}</span><b>{cast.length === 2 ? performanceCoordination : "待第二位主演"}{cast.length === 2 ? ` · ${performanceCoordination >= 88 ? ensembleActive ? "调度成熟" : "天生搭档" : performanceCoordination >= 74 ? "值得期待" : "首次磨合"}` : ""}</b></div>
                 <div><span>平均士气</span><b className={averageMorale >= 0 ? "positive" : "negative"}>{averageMorale >= 0 ? "+" : ""}{averageMorale.toFixed(0)}</b></div>
               </div>}
-              <ActionBar label={director ? `${director.name} / ${cast.map((item) => item.name).join("、") || "待选主演"}` : "尚未选择导演"} detail={`剧本 ${scriptScore} 分 · 主创片酬 ¥${money(talentCost)} · 适配 +${fit}${chemistry ? ` · 默契 ${chemistry}` : ""}`} button="开机拍摄" disabled={!director || cast.length !== 2 || projectPaymentDelta(totalBeforeRelease, projectCostPaid) > cash} onClick={() => { setEventChoice(null); commitProjectCost(totalBeforeRelease, 3); }} back={() => moveToStage(1)} />
+              <ActionBar label={director ? `${director.name} / ${cast.map((item) => item.name).join("、") || "待选主演"}` : "尚未选择导演"} detail={`剧本 ${scriptScore} 分 · 主创班底 ¥${money(talentCost)} · 适配 +${fit}${cast.length === 2 ? ` · ${ensembleActive ? "协调" : "默契"} ${performanceCoordination}` : ""}`} button="开机拍摄" disabled={!director || cast.length !== 2 || projectPaymentDelta(totalBeforeRelease, projectCostPaid) > cash} onClick={() => { setEventChoice(null); commitProjectCost(totalBeforeRelease, 3); }} back={() => moveToStage(1)} />
             </>
           )}
 
           {!utilityRoom && stage === 3 && (
             <>
-              <PageHead code="NOW FILMING" title={`《${title}》`} accent="正式开机。" sub={`${director?.name}执导，${cast.map((item) => item.name).join("、")}领衔主演。`} stamp="拍摄中" />
+              <PageHead code="NOW FILMING" title={`《${title}》`} accent="正式开机。" sub={`${director?.name}执导，${cast.map((item) => item.name).join("、")}${ensembleActive ? `担任叙事锚点，${selectedEnsembleCast.name}共同出演。` : "领衔主演。"}`} stamp="拍摄中" />
               <div className="production-overview">
                 <div className="clapperboard-card" role="img" aria-label={`《${title}》拍摄场记板`}>
                   <div className="clapperboard-copy"><span>PRODUCTION</span><h2>{title}</h2><dl><div><dt>SCENE</dt><dd>{String(year).padStart(2, "0")}-{genre.name.slice(0, 2)}</dd></div><div><dt>TAKE</dt><dd>01</dd></div></dl><p>导演 · {director?.name}</p><small>{cast.map((item) => item.name).join(" / ")}</small></div>
                 </div>
-                <div className="production-stats"><header><div><span>PRODUCTION MONITOR</span><h3>制作状态</h3></div><i><b /> REC</i></header><Metric label="剧本质量" value={scriptScore} /><Metric label="题材适配" value={Math.min(100, 64 + fit)} /><Metric label="班底实力" value={Math.round(((director?.skill ?? 0) + cast.reduce((sum, item) => sum + item.acting, 0) / 2) / 2)} /><Metric label="主演默契" value={chemistry ?? 60} /><Metric label="预算保障" value={budget.name === "大片级" ? 94 : budget.name === "标准制作" ? 78 : 61} /><div className="crew-line"><span>DIRECTOR <b>{director?.name}</b></span><span>CAST <b>{cast.map((item) => item.name).join(" / ")}</b></span></div></div>
+                <div className="production-stats"><header><div><span>PRODUCTION MONITOR</span><h3>制作状态</h3></div><i><b /> REC</i></header><Metric label="剧本质量" value={scriptScore} /><Metric label="题材适配" value={Math.min(100, 64 + fit)} /><Metric label="班底实力" value={Math.round(((director?.skill ?? 0) + (ensemblePerformance?.acting ?? cast.reduce((sum, item) => sum + item.acting, 0) / 2)) / 2)} /><Metric label={ensembleActive ? "群像协调" : "主演默契"} value={performanceCoordination} /><Metric label="预算保障" value={budget.name === "大片级" ? 94 : budget.name === "标准制作" ? 78 : 61} /><div className="crew-line"><span>DIRECTOR <b>{director?.name}</b></span><span>CAST <b>{cast.map((item) => item.name).join(" / ")}{ensembleActive ? ` + ${selectedEnsembleCast.name}` : ""}</b></span></div></div>
               </div>
               <SectionTitle number="3" title="三段式片场决策" note="开机 → 中期 → 后期，前一选择会改变下一阶段" />
               <div className="production-chain-summary"><div><span>已处理</span><b>{productionTotals.resolved}/3</b></div><div><span>累计质量</span><b>{productionTotals.quality >= 0 ? "+" : ""}{productionTotals.quality}</b></div><div><span>市场热度</span><b>{productionTotals.market >= 0 ? "+" : ""}{productionTotals.market}</b></div><div><span>士气 / 档期风险</span><b>{productionTotals.morale >= 0 ? "+" : ""}{productionTotals.morale} / {productionTotals.scheduleRisk >= 0 ? "+" : ""}{productionTotals.scheduleRisk}</b></div></div>
@@ -1180,7 +1224,7 @@ export default function Home() {
               <div className="marketing-grid">{marketing.map((item) => <button key={item.name} className={promo.name === item.name ? "selected" : ""} onClick={() => setPromo(item)}><strong>{item.name}</strong><span>¥{money(Math.round(item.value * industryCostIndex))}</span><small>宣发强度 {item.power} · 首日触达 ×{item.boost.toFixed(2)}</small></button>)}</div>
               <div className="forecast"><span>行业预测</span><b>{scriptScore >= 84 ? "口碑潜力突出" : scriptScore < 70 ? "剧本风险较高" : genre.heat >= 85 ? "热度领先" : "稳健开局"}</b><p>剧本 {scriptScore} · 同档分流 {Math.round(competitionPressure * 100)}% · 档期 ×{slot.boost} · 公司触达 ×{studioReach.toFixed(2)} · 档期风险影响 ×{scheduleEfficiency.toFixed(2)}</p></div>
               {investmentClaimed && <div className="financing-obligation"><span>投</span><div><b>本年度已引入外部投资 ¥{money(annualInvestment)}</b><p>上映后投资方抽取片方34%分账收入的10%，回收上限为 ¥{money(annualInvestment * 1.5)}；剩余收入才进入项目结算。</p></div></div>}
-              <div className="ticket-formula"><div><span>内容底盘</span><b>剧本 {scriptScore}</b><small>剧本低于65分时，最终观众评分最高只能达到6.5</small></div><div><span>主创号召</span><b>{Math.round(((director?.appeal ?? 0) + cast.reduce((sum, actor) => sum + actor.appeal, 0)) / 3)}</b><small>演员评级额外提供开画 +{castTierOpeningBonus.toFixed(1)}，但不能替代口碑</small></div><div><span>发行放大</span><b>×{(slot.boost * promo.boost).toFixed(2)}</b><small>高宣发抬升开画，但投入越高边际收益越低</small></div><div><span>同期竞争</span><b>-{Math.round(competitionPressure * 100)}%</b><small>竞品分流开画观众，并持续争夺排片</small></div><div><span>档期风险影响</span><b>×{scheduleEfficiency.toFixed(2)}</b><small>{productionTotals.scheduleRisk > 0 ? `累计 +${productionTotals.scheduleRisk} 风险，每点降低 2.5% 开画效率，最多降低 10%` : "风险已控制；负风险不会额外提高票房"}</small></div><div className="studio-factor"><span>制片人基本盘</span><b>×{studioReach.toFixed(2)}</b><small>只强化开画，等级与声望影响会逐日衰减</small></div></div>
+              <div className="ticket-formula"><div><span>内容底盘</span><b>剧本 {scriptScore}</b><small>剧本低于65分时，最终观众评分最高只能达到6.5</small></div><div><span>剧本引擎</span><b>{scriptBuild.buildName}</b><small>{summarizeScriptDownstream(scriptBuild.downstream).join(" · ")}</small></div><div><span>主创号召</span><b>{Math.round(((director?.appeal ?? 0) + cast.reduce((sum, actor) => sum + actor.appeal, 0)) / 3)}</b><small>演员评级额外提供开画 +{castTierOpeningBonus.toFixed(1)}，但不能替代口碑</small></div><div><span>发行放大</span><b>×{(slot.boost * promo.boost).toFixed(2)}</b><small>高宣发抬升开画，但投入越高边际收益越低</small></div><div><span>同期竞争</span><b>-{Math.round(competitionPressure * 100)}%</b><small>竞品分流开画观众，并持续争夺排片</small></div><div><span>档期风险影响</span><b>×{scheduleEfficiency.toFixed(2)}</b><small>{productionTotals.scheduleRisk > 0 ? `累计 +${productionTotals.scheduleRisk} 风险，每点降低 2.5% 开画效率，最多降低 10%` : "风险已控制；负风险不会额外提高票房"}</small></div><div className="studio-factor"><span>制片人基本盘</span><b>×{studioReach.toFixed(2)}</b><small>只强化开画，等级与声望影响会逐日衰减</small></div></div>
               <div className="cost-breakdown"><span>制作与主创 <b>¥{money(totalBeforeRelease)}</b></span><span>完片保险与管理 <b>¥{money(overheadCost)}</b></span><span>宣发及片场追加 <b>¥{money(currentPromoCost + currentEventCost)}</b></span>{rewriteCost > 0 && <span>剧本改稿 <b>¥{money(rewriteCost)}</b></span>}<strong>总投资 ¥{money(totalCost)}</strong></div>
               <ActionBar label={`${slot.name} · ${promo.name}`} detail={`总投资 ¥${money(totalCost)} · 待支付宣发 ¥${money(Math.max(0, projectPaymentDelta(totalCost, projectCostPaid)))} · 同档分流 ${Math.round(competitionPressure * 100)}%`} button="全国上映，揭晓票房" disabled={projectPaymentDelta(totalCost, projectCostPaid) > cash} onClick={simulate} back={() => moveToStage(3)} />
             </>

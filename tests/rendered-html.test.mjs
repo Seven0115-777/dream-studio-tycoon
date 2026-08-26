@@ -42,17 +42,19 @@ test("server-renders the visual movie studio hub", async () => {
 });
 
 test("keeps the mobile shell separate from simulation systems", async () => {
-  const [page, layout, mobileUi, css, economy, scriptEngine, gameSystems, talentSystem, competitionSystem, marketSystem] = await Promise.all([
+  const [page, layout, mobileUi, css, economy, scriptEngine, scriptBuildSystem, gameSystems, talentSystem, competitionSystem, marketSystem, staticEntry] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/mobile-ui.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/economy.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/script-engine.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/script-build-system.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/game-systems.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/talent-system.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/competition-system.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/market-system.ts", import.meta.url), "utf8"),
+    readFile(new URL("../static-site/main.tsx", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /from "\.\/components\/mobile-ui"/);
@@ -72,6 +74,27 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /投资方分成/);
   assert.doesNotMatch(page, /查看完整题库与所有答案分值/);
   assert.doesNotMatch(page, /className="option-score"/);
+  assert.match(page, /核心共鸣 2\/2 · 已激活/);
+  assert.match(page, /同向强化 \$\{scriptBuildPreview\.alignedChoices\} 次/);
+  assert.match(page, /效果按 Q1 → Q6 的叙事顺序结算/);
+  assert.match(page, /aria-live="polite"/);
+  assert.match(page, /连接失去|describeBuildChange/);
+  assert.doesNotMatch(page, /可修复 ·/);
+  assert.match(page, /选择配角班底/);
+  assert.match(page, /核心主演 \/ 叙事锚点/);
+  assert.ok(page.indexOf("ensemble-casting") < page.indexOf('<div className="talent-grid">{filteredActors'), "ensemble options must appear before the long actor grid");
+  assert.doesNotMatch(page, /scriptEffects\.starPowerMultiplier \* ensemblePerformance\.starPowerMultiplier/);
+  assert.match(css, /\.script-build-desk/);
+  assert.match(css, /\.ensemble-casting button\.selected/);
+  assert.match(css, /\.build-desk-grid b \{ color: inherit; font-size: 12px/);
+  assert.match(css, /\.option-keyword em, \.option-keyword i, \.option-tradeoff em \{ position: static; color: #285d51; font-size: 10px/);
+  assert.match(css, /\.ensemble-casting button small \{ color: #b4cdd1; font-size: 11px/);
+  assert.match(css, /\.ensemble-casting > p\.ensemble-preview \{ color: #b9e5eb; font-size: 11px/);
+  assert.match(scriptBuildSystem, /export const coreStylesByGenre/);
+  assert.match(scriptBuildSystem, /export function resolveEnsembleCast/);
+  assert.match(scriptBuildSystem, /export function summarizeScriptDownstream/);
+  assert.match(page, /实际结算/);
+  assert.doesNotMatch(staticEntry, /api\/script-score/);
   assert.match(page, /三段式片场决策/);
   assert.match(page, /年度制片委托/);
   assert.match(page, /金幕奖提名与获奖/);

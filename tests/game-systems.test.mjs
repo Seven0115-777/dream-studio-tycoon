@@ -4,6 +4,7 @@ import { calculateCompetitionPressure, generateCompetitors } from "../app/compet
 import { annualInvestmentAmount, boxOfficeSettlementTarget, buildAudienceScoreCurve, buildContentModel, buildReleaseModel, calculateCareerRewards, determineAwards, investorRevenueShare, projectPaymentDelta, scheduleRiskMultiplier, settleAnnualCompanyCash, studioReachMultiplier, yearlyOperatingCost } from "../app/economy.ts";
 import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts";
 import { evaluateScript, getScriptQuestionBank, getScriptQuestions, rewriteScript } from "../app/script-engine.ts";
+import { coreStylesByGenre, deriveScriptBuild, describeBuildChange, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, resolveEnsembleCast, resolveEnsembleDownstream, scriptConnections, summarizeScriptDownstream } from "../app/script-build-system.ts";
 import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, judgeAwards, resolveProductionChain } from "../app/game-systems.ts";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
 
@@ -334,7 +335,7 @@ test("SS competitor movies create the strongest audience diversion", () => {
   assert.ok(movies.filter((movie) => movie.tier === "SS").every((movie) => movie.audienceDrain === .14));
 });
 
-test("every movie genre has 18 new questions and rotates a six-question paper", () => {
+test("the 144-card bank feeds five route cards after the fixed core-style choice", () => {
   const bank = getScriptQuestionBank();
   assert.equal(bank.common.length, 6);
   assert.equal(Object.keys(bank.genres).length, 6);
@@ -347,10 +348,278 @@ test("every movie genre has 18 new questions and rotates a six-question paper", 
   for (const genre of Object.keys(bank.genres)) {
     const firstSix = Array.from({ length: 6 }, (_, index) => getScriptQuestions(genre, index + 1)).flat();
     const firstTwelvePapers = Array.from({ length: 12 }, (_, index) => getScriptQuestions(genre, index + 1).map((question) => question.id).sort().join("|"));
-    assert.equal(new Set(firstSix.filter((question) => !question.id.startsWith("common-")).map((question) => question.id)).size, 23);
+    assert.equal(new Set(firstSix.filter((question) => !question.id.startsWith("common-") && !question.id.startsWith("core-")).map((question) => question.id)).size, 23);
     assert.equal(new Set(firstSix.filter((question) => question.id.startsWith("common-")).map((question) => question.id)).size, 6);
+    assert.ok(firstSix.every((question, index) => index % 6 !== 0 || question.id.startsWith("core-")));
     assert.equal(new Set(firstTwelvePapers).size, 12);
   }
+});
+
+test("all eighteen core styles are reachable and can activate more than one viable build", () => {
+  const styles = Object.values(coreStylesByGenre).flat();
+  assert.equal(styles.length, 18);
+  assert.equal(new Set(styles.map((style) => style.id)).size, 18);
+  assert.deepEqual(styles.map((style) => style.engine).filter((engine) => scriptConnections.some((connection) => connection.name === engine)), []);
+  for (const [genre, genreStyles] of Object.entries(coreStylesByGenre)) {
+    const questions = getScriptQuestions(genre, 1);
+    assert.deepEqual(questions[0].options.map((option) => option.label), genreStyles.map((style) => style.name));
+    for (const style of genreStyles) {
+      const builds = [];
+      for (let combination = 0; combination < 243; combination += 1) {
+        let cursor = combination;
+        const answers = { [questions[0].id]: style.id };
+        for (const question of questions.slice(1)) {
+          answers[question.id] = question.options[cursor % 3].id;
+          cursor = Math.floor(cursor / 3);
+        }
+        const report = evaluateScript(answers, questions.map((question) => question.id), genre, 1);
+        if (report.build?.activeEngines.includes(style.engine)) builds.push(report.build.buildName);
+      }
+      assert.ok(builds.length > 1, `${style.name} should have multiple activated builds`);
+      assert.ok(new Set(builds).size > 1, `${style.name} should have more than one finished identity`);
+    }
+  }
+});
+
+test("cross-style connections stay competitive and no core route strictly dominates its genre", () => {
+  let competitiveCrossStyles = 0;
+  for (const [genre, styles] of Object.entries(coreStylesByGenre)) {
+    const questions = getScriptQuestions(genre, 1);
+    for (const style of styles) {
+      let bestPure = -1;
+      let bestCross = -1;
+      for (let combination = 0; combination < 243; combination += 1) {
+        let cursor = combination;
+        const answers = { [questions[0].id]: style.id };
+        for (const question of questions.slice(1)) {
+          answers[question.id] = question.options[cursor % 3].id;
+          cursor = Math.floor(cursor / 3);
+        }
+        const report = evaluateScript(answers, questions.map((question) => question.id), genre, 1);
+        if (report.build.alignedChoices === 5) bestPure = Math.max(bestPure, report.score);
+        if (report.build.connections.length && report.build.alignedChoices < 5) bestCross = Math.max(bestCross, report.score);
+      }
+      if (bestPure < 0 || bestCross >= bestPure) competitiveCrossStyles += 1;
+    }
+    for (const first of styles) {
+      for (const second of styles) {
+        if (first === second) continue;
+        const a = first.downstream;
+        const b = second.downstream;
+        const aQuality = a.contentQuality + a.wordOfMouth;
+        const bQuality = b.contentQuality + b.wordOfMouth;
+        const aMarket = a.openingPower + a.retention * 100 + (a.starPowerMultiplier - 1) * 10;
+        const bMarket = b.openingPower + b.retention * 100 + (b.starPowerMultiplier - 1) * 10;
+        const aCost = a.budgetCostMultiplier * a.castingCostMultiplier;
+        const bCost = b.budgetCostMultiplier * b.castingCostMultiplier;
+        const aAwards = a.awardPicture + a.awardDirector + a.awardActing;
+        const bAwards = b.awardPicture + b.awardDirector + b.awardActing;
+        const dominates = aQuality >= bQuality && aMarket >= bMarket && aCost <= bCost && aAwards >= bAwards
+          && (aQuality > bQuality || aMarket > bMarket || aCost < bCost || aAwards > bAwards);
+        assert.equal(dominates, false, `${first.name} must not strictly dominate ${second.name}`);
+      }
+    }
+  }
+  assert.ok(competitiveCrossStyles >= 12, "cross-style builds should be top-tier options for most cores");
+});
+
+test("script builds are deterministic and route cards add, repair and connect flaws", () => {
+  const questions = getScriptQuestions("犯罪悬疑", 4);
+  let sample;
+  for (let combination = 0; combination < 243 && !sample; combination += 1) {
+    let cursor = combination;
+    const answers = { [questions[0].id]: questions[0].options[1].id };
+    for (const question of questions.slice(1)) {
+      answers[question.id] = question.options[cursor % 3].id;
+      cursor = Math.floor(cursor / 3);
+    }
+    const build = deriveScriptBuild(answers, questions, "犯罪悬疑");
+    if (build.connections.length && build.repairedFlaws.length) sample = { answers, build };
+  }
+  assert.ok(sample);
+  assert.deepEqual(sample.build, deriveScriptBuild(sample.answers, questions, "犯罪悬疑"));
+  assert.ok(sample.build.keywords.length >= 3);
+  assert.ok(sample.build.connections.length >= 1);
+  assert.ok(sample.build.repairedFlaws.length >= 1);
+  assert.ok(sample.build.events.some((event) => event.includes("修复") || event.includes("连接")));
+});
+
+test("connections merge real downstream tradeoffs with bounded totals", () => {
+  let comparison;
+  let mostConnections = 0;
+  for (const genre of Object.keys(coreStylesByGenre)) {
+    const questions = getScriptQuestions(genre, 1);
+    const reports = [];
+    for (let combination = 0; combination < 729; combination += 1) {
+      let cursor = combination;
+      const answers = {};
+      for (const question of questions) {
+        answers[question.id] = question.options[cursor % 3].id;
+        cursor = Math.floor(cursor / 3);
+      }
+      const report = evaluateScript(answers, questions.map((question) => question.id), genre, 1);
+      const effects = report.build.downstream;
+      mostConnections = Math.max(mostConnections, report.build.connections.length);
+      assert.ok(effects.budgetCostMultiplier >= .85 && effects.budgetCostMultiplier <= 1.18);
+      assert.ok(effects.castingCostMultiplier >= .92 && effects.castingCostMultiplier <= 1.18);
+      assert.ok(effects.contentQuality >= -3 && effects.contentQuality <= 4);
+      assert.ok(effects.wordOfMouth >= -3 && effects.wordOfMouth <= 5);
+      assert.ok(effects.openingPower >= -5 && effects.openingPower <= 6);
+      assert.ok(effects.retention >= -.02 && effects.retention <= .025);
+      assert.ok(effects.starPowerMultiplier >= .68 && effects.starPowerMultiplier <= 1.18);
+      assert.ok(effects.libraryMultiplier >= 1 && effects.libraryMultiplier <= 1.18);
+      reports.push(report);
+    }
+    if (!comparison) {
+      for (const style of coreStylesByGenre[genre]) {
+        const plain = reports.find((report) => report.build.core?.id === style.id && report.build.alignedChoices >= 2 && report.build.connections.length === 0);
+        const connected = reports.find((report) => report.build.core?.id === style.id && report.build.alignedChoices >= 2 && report.build.connections.length > 0);
+        if (plain && connected) comparison = { plain, connected };
+      }
+    }
+  }
+  assert.ok(comparison);
+  assert.notDeepEqual(comparison.connected.build.downstream, comparison.plain.build.downstream);
+  assert.ok(comparison.connected.build.connections.every((connection) => comparison.connected.build.appliedEffects.some((effect) => effect.startsWith(`${connection.name}：`))));
+  assert.ok(summarizeScriptDownstream(comparison.connected.build.downstream).some((line) => /成本|质量|口碑|开画|留存|评审|片库|群像/.test(line)));
+  assert.ok(mostConnections >= 2, "multi-connection builds should exercise the merge caps");
+});
+
+test("build feedback follows the last changed answer and covers every visible change type", () => {
+  const base = deriveScriptBuild({}, [], "犯罪悬疑");
+  const core = coreStylesByGenre["犯罪悬疑"][0];
+  const resonance = { ...base, core, alignedChoices: 1 };
+  assert.match(describeBuildChange(base, resonance), /核心流派|共鸣 1\/2/);
+  assert.match(describeBuildChange(resonance, { ...resonance, alignedChoices: 2 }), /共鸣 2\/2 已激活/);
+  const connected = { ...resonance, connections: [scriptConnections[0]] };
+  assert.match(describeBuildChange(resonance, connected), /连接新激活/);
+  assert.match(describeBuildChange(connected, resonance), /连接失去/);
+  const flawed = { ...resonance, unresolvedFlaws: ["伏笔缺口"] };
+  assert.match(describeBuildChange(resonance, flawed), /新增缺陷/);
+  assert.match(describeBuildChange(flawed, resonance), /缺陷不再存在/);
+  const repaired = { ...resonance, repairedFlaws: ["伏笔缺口"] };
+  assert.match(describeBuildChange(flawed, repaired), /缺陷修复/);
+  assert.match(describeBuildChange(repaired, flawed), /缺陷重新暴露/);
+  const conflicted = { ...resonance, conflicts: ["表达冲突"] };
+  assert.match(describeBuildChange(resonance, conflicted), /表达冲突增加/);
+  assert.match(describeBuildChange(conflicted, resonance), /表达冲突化解/);
+});
+
+test("editing an earlier answered card distinguishes lost recipes, removed risks and reexposed flaws", () => {
+  const found = { lostConnection: false, removedRisk: false, reexposed: false, repaired: false };
+  for (const genre of Object.keys(coreStylesByGenre)) {
+    for (let year = 1; year <= 4; year += 1) {
+      const questions = getScriptQuestions(genre, year);
+      for (let combination = 0; combination < 243; combination += 1) {
+        let cursor = combination;
+        const answers = { [questions[0].id]: questions[0].options[0].id };
+        for (const question of questions.slice(1)) {
+          answers[question.id] = question.options[cursor % 3].id;
+          cursor = Math.floor(cursor / 3);
+        }
+        const before = deriveScriptBuild(answers, questions, genre);
+        for (const question of questions.slice(1)) {
+          for (const option of question.options) {
+            if (answers[question.id] === option.id) continue;
+            const after = deriveScriptBuild({ ...answers, [question.id]: option.id }, questions, genre);
+            const feedback = describeBuildChange(before, after);
+            if (feedback.includes("连接失去")) found.lostConnection = true;
+            if (feedback.includes("缺陷不再存在")) found.removedRisk = true;
+            if (feedback.includes("缺陷重新暴露")) found.reexposed = true;
+            if (feedback.includes("缺陷修复")) found.repaired = true;
+          }
+        }
+        if (Object.values(found).every(Boolean)) break;
+      }
+      if (Object.values(found).every(Boolean)) break;
+    }
+    if (Object.values(found).every(Boolean)) break;
+  }
+  assert.deepEqual(found, { lostConnection: true, removedRisk: true, reexposed: true, repaired: true });
+});
+
+test("flaw repairs resolve only earlier narrative flaws and hints exclude active connections", () => {
+  const coreOption = { id: "crime-deduction", profile: "core", keyword: "公平线索", connectionKey: "公平线索", alignment: ["crime-deduction"], routeFunction: "core", relation: "核心" };
+  const repairOption = { id: "repair", profile: "story", keyword: "证据链", connectionKey: "严密因果", alignment: ["crime-deduction"], routeFunction: "reinforce", repairsFlaw: "伏笔缺口", relation: "补强" };
+  const flawOption = { id: "flaw", profile: "risky", keyword: "身份反转", connectionKey: "强反转", alignment: [], routeFunction: "venture", addsFlaw: "伏笔缺口", relation: "冒险" };
+  const coreQuestion = { id: "core", options: [coreOption] };
+  const repairQuestion = { id: "repair-q", options: [repairOption] };
+  const flawQuestion = { id: "flaw-q", options: [flawOption] };
+  const answers = { core: coreOption.id, "repair-q": repairOption.id, "flaw-q": flawOption.id };
+  const repairFirst = deriveScriptBuild(answers, [coreQuestion, repairQuestion, flawQuestion], "犯罪悬疑");
+  assert.deepEqual(repairFirst.unresolvedFlaws, ["伏笔缺口"]);
+  const flawFirst = deriveScriptBuild(answers, [coreQuestion, flawQuestion, repairQuestion], "犯罪悬疑");
+  assert.deepEqual(flawFirst.unresolvedFlaws, []);
+  assert.deepEqual(flawFirst.repairedFlaws, ["伏笔缺口"]);
+  assert.ok(flawFirst.nextConnections.every((hint) => !flawFirst.connections.some((connection) => connection.name === hint.name) && hint.missingKeyword));
+});
+
+test("genre-specific keywords keep shared connection keys without repeating visible copy", () => {
+  const balanced = (genre) => Array.from({ length: 12 }, (_, year) => getScriptQuestions(genre, year + 1)).flatMap((questions) => questions.flatMap((question) => question.options)).find((option) => option.profile === "balanced");
+  const crime = balanced("犯罪悬疑");
+  const love = balanced("都市爱情");
+  const comedy = balanced("合家欢喜剧");
+  assert.ok(crime && love && comedy);
+  assert.equal(crime.connectionKey, "关系网络");
+  assert.equal(love.connectionKey, "关系网络");
+  assert.notEqual(crime.keyword, love.keyword);
+  assert.notEqual(love.keyword, comedy.keyword);
+});
+
+test("ensemble casts keep two leads while offering three viable cost and coordination profiles", () => {
+  assert.deepEqual(ensembleCastOptions.map((option) => option.id), ["lean", "veteran", "rookie"]);
+  assert.equal(normalizeEnsembleCast(undefined), "lean");
+  assert.equal(getScriptDownstream({}).ensemble, false);
+  assert.equal(getScriptDownstream({}).budgetCostMultiplier, 1);
+  const lean = resolveEnsembleCast("lean", 90, 80, 84, "工业水准");
+  const veteran = resolveEnsembleCast("veteran", 90, 80, 84, "工业水准");
+  const rookieWeak = resolveEnsembleCast("rookie", 90, 80, 79, "控本能手");
+  const rookieCoach = resolveEnsembleCast("rookie", 90, 80, 79, "擅长新人");
+  assert.equal(lean.option.cost, 0);
+  assert.ok(veteran.option.cost > rookieCoach.option.cost);
+  assert.ok(veteran.acting > lean.acting);
+  assert.ok(rookieCoach.acting > rookieWeak.acting);
+  assert.ok(rookieCoach.coordination > rookieWeak.coordination);
+  assert.equal(lean.acting, Math.round((90 * .55 + 72 * .25 + 84 * .2) * 10) / 10);
+  assert.ok(lean.ensembleEffectScale < rookieCoach.ensembleEffectScale);
+  assert.ok(rookieCoach.ensembleEffectScale < veteran.ensembleEffectScale);
+  assert.ok(lean.starPowerMultiplier > rookieCoach.starPowerMultiplier && rookieCoach.starPowerMultiplier > veteran.starPowerMultiplier);
+  const ensembleCore = coreStylesByGenre["历史传记"].find((style) => style.id === "history-ensemble").downstream;
+  const leanEffects = resolveEnsembleDownstream(ensembleCore, lean);
+  const veteranEffects = resolveEnsembleDownstream(ensembleCore, veteran);
+  const rookieEffects = resolveEnsembleDownstream(ensembleCore, rookieCoach);
+  assert.ok(leanEffects.pictureBonus < rookieEffects.pictureBonus && rookieEffects.pictureBonus <= veteranEffects.pictureBonus);
+  assert.ok(leanEffects.libraryMultiplier < rookieEffects.libraryMultiplier && rookieEffects.libraryMultiplier <= veteranEffects.libraryMultiplier);
+  assert.ok(veteranEffects.qualityBonus > leanEffects.qualityBonus);
+  assert.ok([leanEffects, veteranEffects, rookieEffects].every((effect) => effect.pictureBonus <= 6 && effect.libraryMultiplier <= 1.18));
+});
+
+test("activated build traits change content, release, awards and library economics", () => {
+  const questions = getScriptQuestions("犯罪悬疑", 1);
+  let report;
+  for (let combination = 0; combination < 243 && !report; combination += 1) {
+    let cursor = combination;
+    const answers = { [questions[0].id]: "crime-social" };
+    for (const question of questions.slice(1)) {
+      answers[question.id] = question.options[cursor % 3].id;
+      cursor = Math.floor(cursor / 3);
+    }
+    const candidate = evaluateScript(answers, questions.map((question) => question.id), "犯罪悬疑", 1);
+    if (candidate.build?.activeEngines.includes("群像余震")) report = candidate;
+  }
+  assert.ok(report);
+  const effects = getScriptDownstream(report);
+  assert.equal(effects.ensemble, true);
+  const baseContent = buildContentModel({ scriptScore: 82, directorSkill: 85, acting: 84, budgetQuality: 11, fit: 12, eventBonus: 0, chemistry: 80, morale: 0 });
+  const traitContent = buildContentModel({ scriptScore: 82, directorSkill: 85, acting: 84, budgetQuality: 11, fit: 12, eventBonus: 0, chemistry: 80, morale: 0, scriptQualityBonus: effects.contentQuality, scriptWordOfMouthBonus: effects.wordOfMouth });
+  assert.ok(traitContent.wordOfMouth > baseContent.wordOfMouth);
+  const baseRelease = buildReleaseModel({ ...releaseBase, audienceScore: 8.4, wordOfMouth: 86, openingPower: 80 });
+  const traitRelease = buildReleaseModel({ ...releaseBase, audienceScore: 8.4, wordOfMouth: 86, openingPower: 80, retentionBonus: .02 });
+  assert.ok(traitRelease.gross > baseRelease.gross);
+  const awardBase = judgeAwards({ year: 3, quality: 86, directorSkill: 86, fit: 12, acting: 86, chemistry: 84, audienceScore: 8.6 }, [{ title: "竞品", strength: 88 }]);
+  const awardTrait = judgeAwards({ year: 3, quality: 86, directorSkill: 86, fit: 12, acting: 86, chemistry: 84, audienceScore: 8.6, pictureBonus: effects.awardPicture, directorBonus: effects.awardDirector }, [{ title: "竞品", strength: 88 }]);
+  assert.ok(awardTrait[0].playerScore > awardBase[0].playerScore);
+  assert.ok(calculateLibraryIncome([{ title: "群像片", gross: 70000, awards: 0, libraryMultiplier: effects.libraryMultiplier }]) > calculateLibraryIncome([{ title: "普通片", gross: 70000, awards: 0 }]));
 });
 
 test("script evaluation publishes dimensions, tags and the rebalanced final score", () => {
@@ -425,6 +694,8 @@ test("script rewrite is a one-use improvement with a visible cost and tradeoff",
   assert.ok(rewrite.report.story > report.story);
   assert.ok(rewrite.report.market < report.market);
   assert.equal(rewrite.report.rewritten, true);
+  assert.ok(rewrite.report.build.events.at(-1).includes("改稿"));
+  assert.notDeepEqual(rewrite.report.build.keywords, report.build.keywords);
   assert.throws(() => rewriteScript(rewrite.report, "commercial"), /只能进行一次/);
 });
 

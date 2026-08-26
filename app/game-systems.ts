@@ -29,11 +29,11 @@ export type GoalOutcome = {
   reward: GoalReward;
 };
 
-export type LibraryFilm = { title: string; gross: number; awards: number };
+export type LibraryFilm = { title: string; gross: number; awards: number; libraryMultiplier?: number };
 
 export function calculateLibraryIncome(history: LibraryFilm[]) {
   const income = history.slice(0, 3).reduce((sum, film) => {
-    const filmIncome = Math.round(Math.max(0, film.gross) * .006 + Math.max(0, film.awards) * 120);
+    const filmIncome = Math.round((Math.max(0, film.gross) * .006 + Math.max(0, film.awards) * 120) * Math.max(1, film.libraryMultiplier ?? 1));
     return sum + Math.min(900, filmIncome);
   }, 0);
   return Math.min(1800, income);
@@ -181,7 +181,7 @@ export function resolveProductionChain(events: ProductionChainEvent[], choices: 
 
 export type AwardCategory = "年度最佳影片" | "最佳导演" | "最佳表演" | "最佳银幕搭档" | "观众选择奖";
 export type AwardNomination = { category: AwardCategory; nominated: boolean; won: boolean; playerScore: number; rivalTitle: string; rivalScore: number; note: string };
-export type AwardInput = { year: number; quality: number; directorSkill: number; fit: number; acting: number; chemistry: number; audienceScore: number };
+export type AwardInput = { year: number; quality: number; directorSkill: number; fit: number; acting: number; chemistry: number; audienceScore: number; pictureBonus?: number; directorBonus?: number; actingBonus?: number; chemistryBonus?: number };
 
 export function awardWinCap(input: Pick<AwardInput, "quality" | "acting" | "audienceScore">) {
   return input.quality >= 94 && input.audienceScore >= 9.2 && input.acting >= 94 ? 3 : 2;
@@ -189,10 +189,10 @@ export function awardWinCap(input: Pick<AwardInput, "quality" | "acting" | "audi
 
 export function judgeAwards(input: AwardInput, competitors: { title: string; strength: number }[]): AwardNomination[] {
   const categories: { category: AwardCategory; score: number; floor: number }[] = [
-    { category: "年度最佳影片", score: input.quality, floor: 82 },
-    { category: "最佳导演", score: input.directorSkill + input.fit * .28, floor: 84 },
-    { category: "最佳表演", score: input.acting, floor: 86 },
-    { category: "最佳银幕搭档", score: input.chemistry, floor: 86 },
+    { category: "年度最佳影片", score: input.quality + (input.pictureBonus ?? 0), floor: 82 },
+    { category: "最佳导演", score: input.directorSkill + input.fit * .28 + (input.directorBonus ?? 0), floor: 84 },
+    { category: "最佳表演", score: input.acting + (input.actingBonus ?? 0), floor: 86 },
+    { category: "最佳银幕搭档", score: input.chemistry + (input.chemistryBonus ?? 0), floor: 86 },
     { category: "观众选择奖", score: input.audienceScore * 10, floor: 82 },
   ];
   const provisional = categories.map(({ category, score, floor }, categoryIndex) => {
