@@ -3,21 +3,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionBar, GameHeader, Metric, ResultStat, ScreenHead as PageHead, SectionTitle, StageProgress } from "./components/mobile-ui";
 import { calculateCompetitionPressure, generateCompetitors, type CompetitorMovie } from "./competition-system";
-import { annualInvestmentAmount, buildContentModel, buildReleaseModel, calculateCareerRewards, projectPaymentDelta, studioReachMultiplier } from "./economy";
+import { annualInvestmentAmount, boxOfficeSettlementTarget, buildContentModel, buildReleaseModel, calculateCareerRewards, projectPaymentDelta, scheduleRiskMultiplier, settleAnnualCompanyCash, studioReachMultiplier, yearlyOperatingCost } from "./economy";
 import { evolveDirectorMarket, evolveGenreMarket, type MarketDirector } from "./market-system";
-import { evaluateScript, getScriptQuestions, type ScriptReport } from "./script-engine";
-import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, externalAgencyIncome, generateTalentNews, matureContractQuote, retirementAge, rookieCandidates, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
+import { evaluateScript, getScriptQuestions, rewriteScript, type RewriteDirection, type ScriptReport } from "./script-engine";
+import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, judgeAwards, resolveProductionChain, type AwardNomination, type GoalOutcome, type ProductionChoice } from "./game-systems";
+import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, externalAgencyIncome, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
 
 type Genre = { name: string; icon: string; heat: number; color: string; heatChange?: number; marketNote?: string };
 type Director = MarketDirector;
 type Actor = AgencyActor;
 type DailyReport = { day: number; boxOffice: number; change: number | null; audienceScore: number; positiveRate: number; momentum: string; headline: string; audienceReaction: string; internetReaction: string; hotTopic: string };
 type PublicityContext = { director: Director; cast: Actor[]; genre: string; quality: number; honors: Record<number, string[]> };
-type Result = { quality: number; gross: number; profit: number; score: number; audience: number; days: number[]; monthDays: number[]; weekGross: number; tailGross: number; studioRevenue: number; investorShare?: number; investmentAmount?: number; successBonus: number; breakEvenGross: number; overheadCost: number; dailyReports: DailyReport[]; awards: string[]; xpGain: number; reputationGain: number; reachUsed: number; wordOfMouth: number; openingPower: number; retention: number; trend: string; trendNote: string; competitionPressure: number };
+type Result = { quality: number; gross: number; profit: number; score: number; audience: number; days: number[]; monthDays: number[]; weekGross: number; tailGross: number; studioRevenue: number; investorShare?: number; investmentAmount?: number; successBonus: number; breakEvenGross: number; overheadCost: number; dailyReports: DailyReport[]; awards: string[]; nominations?: AwardNomination[]; awardCap?: number; goalOutcome?: GoalOutcome; xpGain: number; reputationGain: number; reachUsed: number; wordOfMouth: number; openingPower: number; retention: number; trend: string; trendNote: string; competitionPressure: number; scheduleRisk?: number; scheduleEfficiency?: number };
 type ActorProfile = AgencyProfile;
 type Deal = { fee: number; morale: number; label: string };
-type EventEffect = { label: string; hint: string; quality: number; market: number; cost: number };
-type ProductionEvent = { title: string; description: string; safe: EventEffect; bold: EventEffect };
 type CompanyTab = "roster" | "market" | "rookies";
 type SigningTarget = { actor: Actor; origin: "mature" | "rookie"; rookie?: RookieCandidate };
 type UtilityRoom = "agency" | null;
@@ -54,16 +53,25 @@ type LocalGameSave = {
   actorPool: Actor[];
   castIds: number[];
   deals: Record<number, Deal>;
-  eventChoice: "safe" | "bold" | null;
+  eventChoice?: "safe" | "bold" | null;
+  productionChoices?: (ProductionChoice | null)[];
+  annualGoalId?: string | null;
+  annualGoalLocked?: boolean;
+  rewriteCost?: number;
+  rewriteMarketDelta?: number;
   slotId: string;
   promoName: string;
   result: Result | null;
   revealedDays: number;
+  boxOfficeCashCredited?: number;
+  boxOfficeSettlementLocked?: boolean;
   signedTalents: TalentContract[];
   agencyLedger: AgencyLedger | null;
   actorHonors?: Record<number, string[]>;
   investmentClaimedYear?: number | null;
   rookieRefreshYear?: number | null;
+  rookieAlumniIds?: number[];
+  expiryReminderDismissedYear?: number | null;
   projectCostPaid?: number;
   history: { title: string; gross: number; awards: number }[];
 };
@@ -169,7 +177,7 @@ function careerStage(profile: ActorProfile, age: number) {
 }
 
 function actorAge(actor: Actor, year: number, contract?: TalentContract) {
-  return currentActorAge(getActorProfile(actor).age, year, contract?.origin === "rookie" ? contract.signedYear : 1);
+  return currentActorAge(getActorProfile(actor).age, year, contract?.origin === "rookie" ? contract.signedYear : actor.careerStartYear ?? 1);
 }
 
 function quoteMultiplier(actor: Actor, scriptScore: number, offerFactor: number) {
@@ -220,18 +228,6 @@ function chemistryScore(first: Actor, second: Actor) {
   const [firstId, secondId] = [first.id, second.id].sort((a, b) => a - b);
   const key = `${firstId}-${secondId}`;
   return specialChemistry[key] ?? 58 + ((firstId * 17 + secondId * 11) % 34);
-}
-
-function makeProductionEvent(cast: Actor[], year: number): ProductionEvent {
-  const lead = cast[0]?.name ?? "主演";
-  const partner = cast[1]?.name ?? "另一位主演";
-  const events: ProductionEvent[] = [
-    { title: `${lead}的旧日采访突然冲上热搜`, description: "片场外的舆论开始发酵，品牌方要求剧组尽快表态。处理得当可能反而提升关注度。", safe: { label: "冷处理继续拍摄", hint: "零成本 · 市场热度 -5", quality: 1, market: -5, cost: 0 }, bold: { label: "召开公开说明会", hint: "公关 ¥600万 · 市场热度 +3", quality: 1, market: 3, cost: 600 } },
-    { title: `${partner}在动作戏中意外受伤`, description: "伤势并不严重，但原计划的高难度场面无法按期完成。剧组必须在进度和质量之间做选择。", safe: { label: "启用替身保进度", hint: "按期完成 · 质量 -2", quality: -2, market: 0, cost: 0 }, bold: { label: "停工两周等待恢复", hint: "追加 ¥1,200万 · 质量 +6", quality: 6, market: 0, cost: 1200 } },
-    { title: `${lead}与${partner}的片场路透爆火`, description: "两位主演的化学反应意外出圈，社交平台开始自发讨论。宣发团队建议趁势释放花絮。", safe: { label: "保持神秘感", hint: "质量 +2 · 热度 +1", quality: 2, market: 1, cost: 0 }, bold: { label: "连夜剪辑角色特辑", hint: "追加 ¥450万 · 热度 +7", quality: 3, market: 7, cost: 450 } },
-    { title: "导演提出重拍电影结局", description: "内部试映认为当前结局过于保守。导演希望追加两周拍摄，用更大胆的开放式结局收尾。", safe: { label: "按原计划完成", hint: "稳定交片 · 质量 +2", quality: 2, market: 0, cost: 0 }, bold: { label: "支持导演重拍", hint: "追加 ¥1,000万 · 质量 +8", quality: 8, market: 1, cost: 1000 } },
-  ];
-  return events[((cast[0]?.id ?? 0) * 3 + (cast[1]?.id ?? 0) + year) % events.length];
 }
 
 function buildDailyReports(title: string, days: number[], wordOfMouth: number, scoreCurve: number[], context: PublicityContext): DailyReport[] {
@@ -325,11 +321,18 @@ export default function Home() {
   const [actorFilter, setActorFilter] = useState<"全部" | "男演员" | "女演员" | "高适配">("全部");
   const [actorQuery, setActorQuery] = useState("");
   const [eventChoice, setEventChoice] = useState<"safe" | "bold" | null>(null);
+  const [productionChoices, setProductionChoices] = useState<(ProductionChoice | null)[]>([null, null, null]);
+  const [annualGoalId, setAnnualGoalId] = useState<string | null>(null);
+  const [annualGoalLocked, setAnnualGoalLocked] = useState(false);
+  const [rewriteCost, setRewriteCost] = useState(0);
+  const [rewriteMarketDelta, setRewriteMarketDelta] = useState(0);
   const [slot, setSlot] = useState(slots[2]);
   const [promo, setPromo] = useState(marketing[1]);
   const [result, setResult] = useState<Result | null>(null);
   const [history, setHistory] = useState<{ title: string; gross: number; awards: number }[]>([]);
   const [revealedDays, setRevealedDays] = useState(0);
+  const [boxOfficeCashCredited, setBoxOfficeCashCredited] = useState(0);
+  const [boxOfficeSettlementLocked, setBoxOfficeSettlementLocked] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
   const liveFeedRef = useRef<HTMLDivElement>(null);
   const [signedTalents, setSignedTalents] = useState<TalentContract[]>([]);
@@ -337,6 +340,8 @@ export default function Home() {
   const [actorHonors, setActorHonors] = useState<Record<number, string[]>>({});
   const [investmentClaimedYear, setInvestmentClaimedYear] = useState<number | null>(null);
   const [rookieRefreshYear, setRookieRefreshYear] = useState<number | null>(null);
+  const [rookieAlumniIds, setRookieAlumniIds] = useState<number[]>([]);
+  const [expiryReminderDismissedYear, setExpiryReminderDismissedYear] = useState<number | null>(null);
   const [projectCostPaid, setProjectCostPaid] = useState(0);
   const [companyTab, setCompanyTab] = useState<CompanyTab>("market");
   const [signingTarget, setSigningTarget] = useState<SigningTarget | null>(null);
@@ -366,7 +371,8 @@ export default function Home() {
         const restoredPool = (save.actorPool?.length ? save.actorPool : actors).map((actor) => {
           const currentRookie = rookieCandidates.find((candidate) => candidate.id === actor.id);
           const canonicalActor = actors.find((candidate) => candidate.id === actor.id);
-          if (currentRookie) return { ...actor, genres: uniqueGenres(actor.genres), potential: Math.max(actor.potential ?? 0, currentRookie.potential), profile: { ...actor.profile, age: currentRookie.profile.age } };
+          const rookieContract = save.signedTalents?.find((contract) => contract.actorId === actor.id && contract.origin === "rookie");
+          if (currentRookie) return { ...actor, careerStartYear: actor.careerStartYear ?? rookieContract?.signedYear ?? 1, genres: uniqueGenres(actor.genres), potential: Math.max(actor.potential ?? 0, currentRookie.potential), profile: { ...currentRookie.profile, ...actor.profile, age: currentRookie.profile.age } };
           return canonicalActor ? { ...actor, genres: uniqueGenres(actor.genres), tag: canonicalActor.tag } : { ...actor, genres: uniqueGenres(actor.genres) };
         });
         const restoredContracts = (save.signedTalents ?? []).map((contract) => {
@@ -393,16 +399,26 @@ export default function Home() {
         setCast((save.castIds ?? []).map((id) => restoredPool.find((actor) => actor.id === id)).filter((actor): actor is Actor => Boolean(actor)));
         setDeals(save.deals ?? {});
         setEventChoice(save.eventChoice ?? null);
+        setProductionChoices(save.productionChoices ?? [save.eventChoice ?? null, null, null]);
+        setAnnualGoalId(save.annualGoalId ?? null);
+        setAnnualGoalLocked(save.annualGoalLocked ?? Boolean(save.annualGoalId && save.stage > 0));
+        setRewriteCost(save.rewriteCost ?? 0);
+        setRewriteMarketDelta(save.rewriteMarketDelta ?? 0);
         setSlot(slots.find((item) => item.id === save.slotId) ?? slots[2]);
         setPromo(marketing.find((item) => item.name === save.promoName) ?? marketing[1]);
         setResult(save.result ?? null);
         setRevealedDays(save.revealedDays ?? 0);
+        const legacyBoxOfficeSettlement = Boolean(save.result && save.boxOfficeCashCredited === undefined);
+        setBoxOfficeCashCredited(save.boxOfficeCashCredited ?? (save.result ? Math.max(0, save.result.studioRevenue - (save.result.investorShare ?? 0) - save.result.successBonus) : 0));
+        setBoxOfficeSettlementLocked(save.boxOfficeSettlementLocked ?? legacyBoxOfficeSettlement);
         setAutoPlay(false);
         setSignedTalents(restoredContracts);
         setAgencyLedger(save.agencyLedger ?? null);
         setActorHonors(save.actorHonors ?? {});
         setInvestmentClaimedYear(save.investmentClaimedYear ?? null);
         setRookieRefreshYear(save.rookieRefreshYear ?? null);
+        setRookieAlumniIds(save.rookieAlumniIds ?? [...new Set([...(save.signedTalents ?? []).filter((contract) => contract.origin === "rookie").map((contract) => contract.actorId), ...restoredPool.filter((actor) => actor.id >= 100).map((actor) => actor.id)])]);
+        setExpiryReminderDismissedYear(save.expiryReminderDismissedYear ?? null);
         setProjectCostPaid(save.projectCostPaid ?? 0);
         setHistory(save.history ?? []);
       } catch {
@@ -418,10 +434,20 @@ export default function Home() {
   }, [stage]);
 
   useEffect(() => {
-    if (stage !== 5 || !result || !autoPlay || revealedDays >= 7) return;
+    if (stage !== 5 || !workspaceOpen || !result || !autoPlay || revealedDays >= 7) return;
     const timer = window.setTimeout(() => setRevealedDays((value) => Math.min(7, value + 1)), revealedDays === 0 ? 450 : 1550);
     return () => window.clearTimeout(timer);
-  }, [stage, result, autoPlay, revealedDays]);
+  }, [stage, workspaceOpen, result, autoPlay, revealedDays]);
+
+  useEffect(() => {
+    if (!saveReady || stage !== 5 || !result || boxOfficeSettlementLocked) return;
+    const target = boxOfficeSettlementTarget(result.days, revealedDays, result.studioRevenue, result.investorShare, result.successBonus);
+    if (target === boxOfficeCashCredited) return;
+    // Cash mirrors the externally revealed box-office settlement for the current day.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCash((value) => Math.max(0, value + target - boxOfficeCashCredited));
+    setBoxOfficeCashCredited(target);
+  }, [boxOfficeCashCredited, boxOfficeSettlementLocked, result, revealedDays, saveReady, stage]);
 
   useEffect(() => {
     if (stage !== 5 || !workspaceOpen || !result) return;
@@ -450,20 +476,29 @@ export default function Home() {
       castIds: cast.map((actor) => actor.id),
       deals,
       eventChoice,
+      productionChoices,
+      annualGoalId,
+      annualGoalLocked,
+      rewriteCost,
+      rewriteMarketDelta,
       slotId: slot.id,
       promoName: promo.name,
       result,
       revealedDays,
+      boxOfficeCashCredited,
+      boxOfficeSettlementLocked,
       signedTalents,
       agencyLedger,
       actorHonors,
       investmentClaimedYear,
       rookieRefreshYear,
+      rookieAlumniIds,
+      expiryReminderDismissedYear,
       projectCostPaid,
       history,
     };
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  }, [actorHonors, actorPool, agencyLedger, budget.name, cash, cast, deals, director?.id, directorPool, eventChoice, genre.name, genreMarket, history, investmentClaimedYear, projectCostPaid, promo.name, reputation, result, revealedDays, rookieRefreshYear, saveReady, scriptAnswers, scriptReport, signedTalents, slot.id, stage, studioXp, title, year]);
+  }, [actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, deals, director?.id, directorPool, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, productionChoices, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieRefreshYear, saveReady, scriptAnswers, scriptReport, signedTalents, slot.id, stage, studioXp, title, year]);
 
   const studioLevel = Math.min(10, 1 + Math.floor(studioXp / 180));
   const studioXpProgress = studioXp % 180;
@@ -474,35 +509,45 @@ export default function Home() {
   const rosterCapacity = agencyCapacity(studioLevel);
   const yearlyTrainingCapacity = trainingCapacity(studioLevel);
   const signedTalentIds = useMemo(() => new Set(signedTalents.map((contract) => contract.actorId)), [signedTalents]);
+  const unavailableRookieIds = useMemo(() => new Set([...signedTalentIds, ...rookieAlumniIds]), [rookieAlumniIds, signedTalentIds]);
   const signedActors = useMemo(() => signedTalents.map((contract) => ({ contract, actor: actorPool.find((actor) => actor.id === contract.actorId) })).filter((item): item is { contract: TalentContract; actor: Actor } => Boolean(item.actor)), [actorPool, signedTalents]);
+  const expiringTalents = useMemo(() => signedActors.filter(({ contract }) => contract.contractEndYear === year), [signedActors, year]);
+  const showExpiryReminder = inStudioHub && expiringTalents.length > 0 && expiryReminderDismissedYear !== year;
   const usedTrainingSlots = signedTalents.filter((contract) => contract.lastTrainedYear === year).length;
   const annualPayroll = signedTalents.reduce((sum, contract) => sum + contract.annualSalary, 0);
   const negotiatingProfile = negotiating ? getActorProfile(negotiating) : null;
   const signingTargetProfile = signingTarget ? getActorProfile(signingTarget.actor) : null;
   const activeSigningQuote = signingTarget && signingTargetProfile ? signingTarget.origin === "rookie" && signingTarget.rookie ? rookieContractQuote(signingTarget.rookie) : matureContractQuote(signingTarget.actor, signingTargetProfile) : null;
-  const matureSigningMarket = useMemo(() => actorPool.filter((actor) => actor.id < 100 && !signedTalentIds.has(actor.id)).sort((first, second) => ((first.id + year * 3) % 24) - ((second.id + year * 3) % 24)).slice(0, 8), [actorPool, signedTalentIds, year]);
+  const matureSigningMarket = useMemo(() => actorPool.filter((actor) => !signedTalentIds.has(actor.id) && (actor.id < 100 || isMatureMarketEligible(actor))).sort((first, second) => ((first.id + year * 3) % 24) - ((second.id + year * 3) % 24)).slice(0, 8), [actorPool, signedTalentIds, year]);
   const availableDirectors = useMemo(() => directorPool.filter((item) => item.available !== false), [directorPool]);
   const marketLeader = useMemo(() => [...genreMarket].sort((first, second) => second.heat - first.heat)[0], [genreMarket]);
   const marketRiser = useMemo(() => [...genreMarket].sort((first, second) => (second.heatChange ?? 0) - (first.heatChange ?? 0))[0], [genreMarket]);
-  const rookieMarket = useMemo(() => buildRookieMarket(year, signedTalentIds, rookieRefreshYear === year), [rookieRefreshYear, signedTalentIds, year]);
+  const rookieMarket = useMemo(() => buildRookieMarket(year, unavailableRookieIds, rookieRefreshYear === year), [rookieRefreshYear, unavailableRookieIds, year]);
   const scriptQuestions = useMemo(() => getScriptQuestions(genre.name, year), [genre.name, year]);
+  const annualGoalCandidates = useMemo(() => generateAnnualGoals(year, genreMarket), [genreMarket, year]);
+  const annualGoal = annualGoalCandidates.find((goal) => goal.id === annualGoalId) ?? null;
   const scriptScore = scriptReport?.score ?? 0;
   const industryCostIndex = Math.min(1.32, 1 + (year - 1) * .025);
   const currentBudgetCost = Math.round(budget.value * industryCostIndex);
   const currentPromoCost = Math.round(promo.value * industryCostIndex);
   const talentCost = Math.round((director?.fee ?? 0) * TALENT_COST_SCALE) + cast.reduce((sum, item) => sum + (deals[item.id]?.fee ?? Math.round(item.fee * TALENT_COST_SCALE)), 0);
   const totalBeforeRelease = currentBudgetCost + talentCost;
-  const productionEvent = useMemo(() => makeProductionEvent(cast, year), [cast, year]);
-  const choiceEffect = eventChoice ? productionEvent[eventChoice] : null;
-  const currentEventCost = Math.round((choiceEffect?.cost ?? 0) * industryCostIndex);
+  const productionChain = useMemo(() => generateProductionChain(cast.map((actor) => actor.id), year, { genre: genre.name, budget: budget.name }), [budget.name, cast, genre.name, year]);
+  const productionTotals = useMemo(() => resolveProductionChain(productionChain, productionChoices), [productionChain, productionChoices]);
+  const scheduleEfficiency = scheduleRiskMultiplier(productionTotals.scheduleRisk);
+  const currentEventCost = Math.round(productionTotals.cost * industryCostIndex);
   const overheadCost = Math.round(totalBeforeRelease * .12);
-  const totalCost = totalBeforeRelease + overheadCost + currentPromoCost + currentEventCost;
+  const totalCost = totalBeforeRelease + overheadCost + currentPromoCost + currentEventCost + rewriteCost;
   const slotCompetitors = useMemo(() => generateCompetitors(slot.id, year, actorPool.map((actor) => ({ id: actor.id, name: actor.name, acting: actor.acting, appeal: actor.appeal, tier: getActorProfile(actor).tier })), cast.map((actor) => actor.id)), [actorPool, cast, slot.id, year]);
   const competitionPressure = calculateCompetitionPressure(slotCompetitors);
   const chemistry = cast.length === 2 ? chemistryScore(cast[0], cast[1]) : null;
   const averageMorale = cast.length ? cast.reduce((sum, actor) => sum + (deals[actor.id]?.morale ?? 0), 0) / cast.length : 0;
   const castTierOpeningBonus = cast.length ? cast.reduce((sum, actor) => sum + tierOpeningBonus(getActorProfile(actor).tier), 0) / cast.length : 0;
   const performanceLead = cast.length ? [...cast].sort((first, second) => second.acting + (deals[second.id]?.morale ?? 0) * .2 - first.acting - (deals[first.id]?.morale ?? 0) * .2)[0] : null;
+  const projectedLibraryHistory = useMemo(() => result ? [{ title, gross: result.gross, awards: result.awards.length }, ...history].slice(0, 3) : history.slice(0, 3), [history, result, title]);
+  const projectedLibraryIncome = calculateLibraryIncome(projectedLibraryHistory);
+  const libraryGross = projectedLibraryHistory.reduce((sum, film) => sum + film.gross, 0);
+  const libraryAwards = projectedLibraryHistory.reduce((sum, film) => sum + film.awards, 0);
   const revealedReports = result?.dailyReports.slice(0, revealedDays) ?? [];
   const visibleReports = revealedReports.slice(-2);
   const latestReport = revealedReports[revealedReports.length - 1] ?? null;
@@ -546,6 +591,15 @@ export default function Home() {
     setUtilityRoom(null);
     setWorkspaceOpen(false);
     setInStudioHub(true);
+  }
+
+  function handleExpiryReminderNow() {
+    setExpiryReminderDismissedYear(year);
+    setCompanyTab("roster");
+    setCompanyNotice(`${expiringTalents.map(({ actor }) => actor.name).join("、")}的合约将在今年结束前到期，请决定是否续约。`);
+    setUtilityRoom("agency");
+    setWorkspaceOpen(true);
+    setInStudioHub(false);
   }
 
   function moveToStage(nextStage: number) {
@@ -667,7 +721,8 @@ export default function Home() {
       salaryPaidThrough: year + 1,
       genreProgress: {},
     };
-    if (!actorPool.some((item) => item.id === actor.id)) setActorPool((pool) => [...pool, actor]);
+    if (!actorPool.some((item) => item.id === actor.id)) setActorPool((pool) => [...pool, origin === "rookie" ? { ...actor, careerStartYear: year } : actor]);
+    if (origin === "rookie") setRookieAlumniIds((current) => current.includes(actor.id) ? current : [...current, actor.id]);
     setSignedTalents((current) => [...current, contract]);
     setCash((value) => value - firstPayment);
     setSigningTarget(null);
@@ -772,37 +827,47 @@ export default function Home() {
     }
   }
 
+  function applyRewrite(direction: RewriteDirection) {
+    if (!scriptReport || scriptReport.rewritten) return;
+    const rewritten = rewriteScript(scriptReport, direction, false);
+    setScriptReport(rewritten.report);
+    setRewriteCost(rewritten.cost);
+    setRewriteMarketDelta(rewritten.marketHeatDelta);
+  }
+
   function simulate() {
     if (!director || cast.length !== 2) return;
     const outstandingProjectCost = projectPaymentDelta(totalCost, projectCostPaid);
     if (outstandingProjectCost > cash) return;
     const acting = cast.reduce((sum, item) => sum + item.acting + (deals[item.id]?.morale ?? 0) * .2, 0) / cast.length;
     const appeal = (director.appeal + cast.reduce((sum, item) => sum + item.appeal, 0)) / 3;
-    const content = buildContentModel({ scriptScore, directorSkill: director.skill, acting, budgetQuality: budget.quality, fit, eventBonus: choiceEffect?.quality ?? 0, chemistry: chemistry ?? 60, morale: averageMorale, directorMatched: director.genres.includes(genre.name), actorFitRate: cast.filter((actor) => actor.genres.includes(genre.name)).length / cast.length });
+    const content = buildContentModel({ scriptScore, directorSkill: director.skill, acting, budgetQuality: budget.quality, fit, eventBonus: productionTotals.quality, chemistry: chemistry ?? 60, morale: averageMorale + productionTotals.morale, directorMatched: director.genres.includes(genre.name), actorFitRate: cast.filter((actor) => actor.genres.includes(genre.name)).length / cast.length });
     const { quality, wordOfMouth, audienceScore: roundedScore } = content;
     const genreSlotBonus = (slot.id === "spring" && genre.name === "合家欢喜剧") || (slot.id === "summer" && genre.name === "科幻冒险") ? 1.12 : 1;
     const openingPower = Math.min(99, Math.round(appeal * .4 + genre.heat * .2 + promo.power * .25 + studioReach / 1.18 * 100 * .12 + castTierOpeningBonus));
-    const release = buildReleaseModel({ appeal, genreHeat: genre.heat, promoCost: promo.value, promoPower: promo.power, budgetCost: budget.value, budgetCapacity: budget.capacity, slotBoost: slot.boost, studioReach, genreSlotBonus, eventMarket: choiceEffect?.market ?? 0, wordOfMouth, audienceScore: roundedScore, openingPower, competitionPressure, totalCost, investmentAmount: investmentClaimed ? annualInvestment : 0 });
+    const release = buildReleaseModel({ appeal, genreHeat: genre.heat, promoCost: promo.value, promoPower: promo.power, budgetCost: budget.value, budgetCapacity: budget.capacity, slotBoost: slot.boost, studioReach, genreSlotBonus, eventMarket: productionTotals.market + rewriteMarketDelta, wordOfMouth, audienceScore: roundedScore, openingPower, competitionPressure, totalCost, investmentAmount: investmentClaimed ? annualInvestment : 0, scheduleRisk: productionTotals.scheduleRisk });
     const { weekDays: days, weekScores, monthDays, weekGross, tailGross, gross, studioRevenue, investorShare, successBonus, profit, breakEvenGross } = release;
     const audience = Math.round(gross * 10000 / 42);
     const trend = days[6] > days[0] * 1.05 ? "口碑逆袭" : days[1] > days[0] && days[6] > days[0] * .72 ? "稳健长线" : days[1] < days[0] * .9 && days[6] < days[0] * .55 ? "高开低走" : "正常回落";
-    const trendNote = trend === "口碑逆袭" ? "高口碑抵消同档竞争，路人推荐推动持续增量。" : trend === "高开低走" ? "明星与宣发拉高首日，但剧本口碑未能承接热度。" : trend === "稳健长线" ? "内容、开画与同档竞争较为均衡，首周维持稳定排片。" : "市场热度按常规节奏释放，后续表现由口碑与竞品共同决定。";
-    const awards: string[] = [];
-    if (quality >= 88) awards.push("年度最佳影片");
-    if (director.skill + fit >= 101) awards.push("最佳导演");
-    if (acting >= 88) {
-      awards.push("最佳表演");
-      if (performanceLead?.acting >= 93) setActorHonors((current) => ({ ...current, [performanceLead.id]: [...new Set([...(current[performanceLead.id] ?? []), "最佳表演"])] }));
-    }
-    if ((chemistry ?? 0) >= 90) awards.push("最佳银幕搭档");
-    if (roundedScore >= 8.6) awards.push("观众选择奖");
-    const { xpGain, reputationGain } = calculateCareerRewards(quality, roundedScore, gross / Math.max(1, breakEvenGross), awards.length);
+    const scheduleNote = productionTotals.scheduleRisk > 0 ? ` 片场累计 +${productionTotals.scheduleRisk} 档期风险，发行效率降至 ${Math.round(release.scheduleEfficiency * 100)}%。` : " 片场档期风险已控制，不产生额外发行增益。";
+    const trendNote = `${trend === "口碑逆袭" ? "高口碑抵消同档竞争，路人推荐推动持续增量。" : trend === "高开低走" ? "明星与宣发拉高首日，但剧本口碑未能承接热度。" : trend === "稳健长线" ? "内容、开画与同档竞争较为均衡，首周维持稳定排片。" : "市场热度按常规节奏释放，后续表现由口碑与竞品共同决定。"}${scheduleNote}`;
+    const awardInput = { year, quality, directorSkill: director.skill, fit, acting, chemistry: chemistry ?? 60, audienceScore: roundedScore };
+    const nominations = judgeAwards(awardInput, slotCompetitors);
+    const awardCap = awardWinCap(awardInput);
+    const awards = nominations.filter((nomination) => nomination.won).map((nomination) => nomination.category);
+    if (awards.includes("最佳表演") && performanceLead?.acting && performanceLead.acting >= 93) setActorHonors((current) => ({ ...current, [performanceLead.id]: [...new Set([...(current[performanceLead.id] ?? []), "最佳表演"])] }));
+    const goalOutcome = annualGoal ? evaluateAnnualGoal(annualGoal, { gross, awards: awards.length, totalCost, genre: genre.name, castIds: cast.map((actor) => actor.id), audienceScore: roundedScore, breakEvenGross }) : undefined;
+    const careerRewards = calculateCareerRewards(quality, roundedScore, gross / Math.max(1, breakEvenGross), awards.length);
+    const xpGain = careerRewards.xpGain + (goalOutcome?.reward.xp ?? 0);
+    const reputationGain = careerRewards.reputationGain + (goalOutcome?.reward.reputation ?? 0);
     const dailyReports = buildDailyReports(title, days, wordOfMouth, weekScores, { director, cast, genre: genre.name, quality, honors: actorHonors });
-    setResult({ quality, gross, profit, score: roundedScore, audience, days, monthDays, weekGross, tailGross, studioRevenue, investorShare, investmentAmount: investmentClaimed ? annualInvestment : 0, successBonus, breakEvenGross, overheadCost, dailyReports, awards, xpGain, reputationGain, reachUsed: studioReach, wordOfMouth, openingPower, retention: release.retention, trend, trendNote, competitionPressure });
+    setResult({ quality, gross, profit, score: roundedScore, audience, days, monthDays, weekGross, tailGross, studioRevenue, investorShare, investmentAmount: investmentClaimed ? annualInvestment : 0, successBonus, breakEvenGross, overheadCost, dailyReports, awards, nominations, awardCap, goalOutcome, xpGain, reputationGain, reachUsed: studioReach, wordOfMouth, openingPower, retention: release.retention, trend, trendNote, competitionPressure, scheduleRisk: productionTotals.scheduleRisk, scheduleEfficiency: release.scheduleEfficiency });
     setStudioXp((value) => value + xpGain);
     setReputation((value) => Math.max(0, value + reputationGain));
     setProjectCostPaid(totalCost);
-    setCash((value) => Math.max(0, value - outstandingProjectCost + studioRevenue - investorShare - successBonus));
+    setCash((value) => Math.max(0, value - outstandingProjectCost + (goalOutcome?.reward.cash ?? 0)));
+    setBoxOfficeCashCredited(0);
+    setBoxOfficeSettlementLocked(false);
     setRevealedDays(0);
     setAutoPlay(true);
     setUtilityRoom(null);
@@ -811,7 +876,9 @@ export default function Home() {
   }
 
   function nextYear() {
-    if (result) setHistory((items) => [{ title, gross: result.gross, awards: result.awards.length }, ...items].slice(0, 3));
+    const nextHistory = result ? [{ title, gross: result.gross, awards: result.awards.length }, ...history].slice(0, 3) : history.slice(0, 3);
+    setHistory(nextHistory);
+    const libraryIncome = calculateLibraryIncome(nextHistory);
     const followingYear = year + 1;
     const castIds = new Set(cast.map((actor) => actor.id));
     const performanceRatio = result ? result.gross / Math.max(1, result.breakEvenGross) : 1;
@@ -844,16 +911,15 @@ export default function Home() {
     });
     const expiredContracts = progressedContracts.filter((contract) => contract.contractEndYear < followingYear && !retiredIds.has(contract.actorId));
     const retainedContracts = progressedContracts.filter((contract) => contract.contractEndYear >= followingYear && !retiredIds.has(contract.actorId));
+    const expiredRookieIds = new Set(expiredContracts.filter((contract) => contract.origin === "rookie").map((contract) => contract.actorId));
     const externalIncome = progressedContracts.reduce((sum, contract) => {
       const actor = actorPool.find((item) => item.id === contract.actorId);
       if (!actor || contract.signedYear >= year) return sum;
       const fullIncome = externalAgencyIncome(actor, contract);
       return sum + (castIds.has(actor.id) ? Math.round(fullIncome * .35) : fullIncome);
     }, 0);
-    const salaryCost = retainedContracts.reduce((sum, contract) => contract.salaryPaidThrough < followingYear ? sum + contract.annualSalary : sum, 0);
-    const operatingCost = Math.round((700 + studioLevel * 350 + signedTalents.length * 180) * industryCostIndex);
-    const updatedContracts = retainedContracts.map((contract) => contract.salaryPaidThrough < followingYear ? { ...contract, salaryPaidThrough: followingYear } : contract);
-    const updatedActorPool = actorPool.filter((actor) => !retiredIds.has(actor.id)).map((actor) => {
+    const operatingCost = yearlyOperatingCost(studioLevel, signedTalents.length, industryCostIndex);
+    const evolvedActorPool = actorPool.filter((actor) => !retiredIds.has(actor.id)).map((actor) => {
       const appeared = cast.some((item) => item.id === actor.id);
       const profile = getActorProfile(actor);
       const contract = progressedContracts.find((item) => item.actorId === actor.id);
@@ -871,6 +937,19 @@ export default function Home() {
       const nextFee = contract?.origin === "rookie" ? appeared ? rookiePerformanceFee(actor.fee, nextTier, contract.filmCredits ?? 1, performanceRatio) : actor.fee : Math.min(5000, Math.max(260, Math.round(actor.fee * (1 + marketFeeRate))));
       return { ...actor, genres: uniqueGenres(unlockedGenre ? [...actor.genres, unlockedGenre] : actor.genres), acting: nextActing, appeal: nextAppeal, fee: nextFee };
     });
+    const withdrawnRookieIds = new Set(evolvedActorPool.filter((actor) => expiredRookieIds.has(actor.id) && !isMatureMarketEligible(actor)).map((actor) => actor.id));
+    const updatedActorPool = evolvedActorPool.filter((actor) => !withdrawnRookieIds.has(actor.id));
+    const updatedContracts = retainedContracts.map((contract) => {
+      const actor = updatedActorPool.find((item) => item.id === contract.actorId);
+      const annualSalary = contract.origin === "rookie" && actor ? rookieCareerSalary(contract.annualSalary, actor.fee, contract.filmCredits ?? 0) : contract.annualSalary;
+      return { ...contract, annualSalary, salaryPaidThrough: contract.salaryPaidThrough < followingYear ? followingYear : contract.salaryPaidThrough };
+    });
+    const salaryCost = updatedContracts.reduce((sum, contract) => {
+      const previous = retainedContracts.find((item) => item.actorId === contract.actorId);
+      return previous && previous.salaryPaidThrough < followingYear ? sum + contract.annualSalary : sum;
+    }, 0);
+    const withdrawnNames = actorPool.filter((actor) => withdrawnRookieIds.has(actor.id)).map((actor) => actor.name);
+    const freeMarketNames = expiredContracts.filter((contract) => !withdrawnRookieIds.has(contract.actorId)).map((contract) => actorPool.find((actor) => actor.id === contract.actorId)?.name ?? "未知艺人");
     const tierChanges = updatedActorPool.flatMap((actor) => {
       const previous = actorPool.find((item) => item.id === actor.id);
       if (!previous) return [];
@@ -879,9 +958,24 @@ export default function Home() {
       if (before === after) return [];
       return [`${actor.name}综合值 ${actor.acting + actor.appeal}，评级由 ${before} ${tierRank(after) > tierRank(before) ? "晋升" : "下调"}为 ${after}。`];
     });
+    const appealChanges = updatedActorPool.flatMap((actor) => {
+      const previous = actorPool.find((item) => item.id === actor.id);
+      const contract = progressedContracts.find((item) => item.actorId === actor.id);
+      if (!previous || contract?.origin !== "rookie" || !castIds.has(actor.id)) return [];
+      const exposure = rookieExposureByActor.get(actor.id) ?? 0;
+      const news = newsByActor.get(actor.id)?.appealDelta ?? 0;
+      const net = actor.appeal - previous.appeal;
+      return [`${actor.name}号召力 ${previous.appeal} → ${actor.appeal}：银幕曝光 +${exposure}，年度舆情 ${news >= 0 ? "+" : ""}${news}，影片走势与年龄等因素计入后净变化 ${net >= 0 ? "+" : ""}${net}。`];
+    });
+    const salaryChanges = updatedContracts.flatMap((contract) => {
+      const previous = retainedContracts.find((item) => item.actorId === contract.actorId);
+      const actor = updatedActorPool.find((item) => item.id === contract.actorId);
+      if (!previous || !actor || contract.origin !== "rookie" || contract.annualSalary <= previous.annualSalary) return [];
+      return [`${actor.name}累计主演 ${contract.filmCredits ?? 0} 部，年薪由 ¥${money(previous.annualSalary)} 上调至 ¥${money(contract.annualSalary)}。`];
+    });
     setSignedTalents(updatedContracts);
-    setAgencyLedger({ year, externalIncome, salaryCost, operatingCost, talentNews, breakoutNotes, tierChanges, retiredNames, expiredNames: expiredContracts.map((contract) => actorPool.find((actor) => actor.id === contract.actorId)?.name ?? "未知艺人") });
-    setCash((value) => Math.max(0, value + externalIncome - salaryCost - operatingCost));
+    setAgencyLedger({ year, externalIncome, libraryIncome, salaryCost, operatingCost, talentNews, breakoutNotes, appealChanges, salaryChanges, tierChanges, retiredNames, withdrawnNames, expiredNames: freeMarketNames });
+    setCash((value) => settleAnnualCompanyCash(value, externalIncome, libraryIncome, salaryCost, operatingCost));
     setActorPool(updatedActorPool);
     const nextGenreMarket = evolveGenreMarket(genreMarket, followingYear);
     const nextDirectorPool = evolveDirectorMarket(directorPool, followingYear, genreMarket.map((item) => item.name));
@@ -892,15 +986,23 @@ export default function Home() {
     setTitle("未命名计划");
     setScriptAnswers({});
     setScriptReport(null);
+    setAnnualGoalId(null);
+    setAnnualGoalLocked(false);
+    setRewriteCost(0);
+    setRewriteMarketDelta(0);
     setDirector(null);
     setCast([]);
     setDeals({});
     setEventChoice(null);
+    setProductionChoices([null, null, null]);
     setResult(null);
     setProjectCostPaid(0);
+    setBoxOfficeCashCredited(0);
+    setBoxOfficeSettlementLocked(false);
     setRevealedDays(0);
     setAutoPlay(true);
     setCompanyNotice("");
+    setExpiryReminderDismissedYear(null);
     setUtilityRoom(null);
     setWorkspaceOpen(false);
     setInStudioHub(true);
@@ -962,25 +1064,27 @@ export default function Home() {
             <>
               <PageHead code={`PROJECT CONTROL · 00${year}`} title="下一部电影，" accent="由你决定。" sub="从一个好题材开始，组建班底，把它送上大银幕。" stamp="系统待命" />
               {agencyLedger && <>
-                <div className="agency-ledger"><span>上一年度公司结算</span><div><b className="positive">+¥{money(agencyLedger.externalIncome)}</b><small>艺人外部工作分成</small></div><div><b className="negative">-¥{money(agencyLedger.salaryCost)}</b><small>新年度固定薪资</small></div><div><b className="negative">-¥{money(agencyLedger.operatingCost ?? 0)}</b><small>公司运营与团队成本</small></div><p>年度经营净额 {agencyLedger.externalIncome - agencyLedger.salaryCost - (agencyLedger.operatingCost ?? 0) >= 0 ? "+" : "-"}¥{money(Math.abs(agencyLedger.externalIncome - agencyLedger.salaryCost - (agencyLedger.operatingCost ?? 0)))}</p></div>
+                <div className="agency-ledger"><span>上一年度公司结算</span><div><b className="positive">+¥{money(agencyLedger.externalIncome)}</b><small>艺人外部工作分成</small></div><div><b className="positive">+¥{money(agencyLedger.libraryIncome ?? 0)}</b><small>片库版权与长尾收益</small></div><div><b className="negative">-¥{money(agencyLedger.salaryCost)}</b><small>新年度艺人薪资</small></div><div><b className="negative">-¥{money(agencyLedger.operatingCost ?? 0)}</b><small>公司运营与团队成本</small></div><p>年度经营净额 {agencyLedger.externalIncome + (agencyLedger.libraryIncome ?? 0) - agencyLedger.salaryCost - (agencyLedger.operatingCost ?? 0) >= 0 ? "+" : "-"}¥{money(Math.abs(agencyLedger.externalIncome + (agencyLedger.libraryIncome ?? 0) - agencyLedger.salaryCost - (agencyLedger.operatingCost ?? 0)))}</p></div>
                 {!!agencyLedger.talentNews?.length && <div className="industry-news"><div><span>INDUSTRY WATCH</span><b>年度艺人舆情与市场变动</b></div>{agencyLedger.talentNews.map((news) => {
                   const newsActor = actorPool.find((actor) => actor.id === news.actorId) ?? actors.find((actor) => actor.id === news.actorId) ?? rookieCandidates.find((actor) => actor.id === news.actorId);
                   const toneLabel = news.tone === "negative" ? "负" : news.tone === "positive" ? "升" : "稳";
                   return <article className={news.tone} key={`${agencyLedger.year}-${news.actorId}`}><div className="industry-news-avatar">{newsActor && <PortraitAvatar person={newsActor} group={news.actorId >= 100 ? "rookie" : "actor"} />}<i>{toneLabel}</i></div><div><b>{news.actorName} · {news.title}</b><small>公众号召力 {news.appealDelta >= 0 ? "+" : ""}{news.appealDelta}</small></div></article>;
-                })}{agencyLedger.breakoutNotes?.map((note) => <p className="breakout-note" key={note}>新人出圈 · {note}</p>)}{agencyLedger.tierChanges?.map((note) => <p className="tier-change-note" key={note}>评级变动 · {note}</p>)}{!!agencyLedger.retiredNames?.length && <p>{agencyLedger.retiredNames.join("、")}达到职业生涯终点，正式退休。</p>}{!!agencyLedger.expiredNames.length && <p>{agencyLedger.expiredNames.join("、")}合约到期，已回到自由市场。</p>}</div>}
+                })}{agencyLedger.breakoutNotes?.map((note) => <p className="breakout-note" key={note}>新人出圈 · {note}</p>)}{agencyLedger.appealChanges?.map((note) => <p className="appeal-change-note" key={note}>号召结算 · {note}</p>)}{agencyLedger.salaryChanges?.map((note) => <p className="salary-change-note" key={note}>身价成长 · {note}</p>)}{agencyLedger.tierChanges?.map((note) => <p className="tier-change-note" key={note}>评级变动 · {note}</p>)}{!!agencyLedger.retiredNames?.length && <p>{agencyLedger.retiredNames.join("、")}达到职业生涯终点，正式退休。</p>}{!!agencyLedger.expiredNames.length && <p>{agencyLedger.expiredNames.join("、")}合约到期，已进入成型艺人自由市场。</p>}{!!agencyLedger.withdrawnNames?.length && <p>{agencyLedger.withdrawnNames.join("、")}合约到期后尚未达到B级市场门槛，暂时退出公开选角市场。</p>}</div>}
               </>}
               {year > 1 && <div className="market-cycle-banner"><div><span>YEAR {year} MARKET</span><b>年度电影市场重新洗牌</b></div><dl><dt>当前最热</dt><dd>{marketLeader.name} · {marketLeader.heat}</dd><dt>上升最快</dt><dd>{marketRiser.name} · {(marketRiser.heatChange ?? 0) >= 0 ? "+" : ""}{marketRiser.heatChange ?? 0}</dd><dt>可约导演</dt><dd>{availableDirectors.length} / {directorPool.length} 位</dd></dl></div>}
+              <SectionTitle number="委" title="选择年度制片委托" note="三选一，确认后锁定到本片结算" />
+              <div className="annual-goal-grid">{annualGoalCandidates.map((goal) => <button type="button" key={goal.id} disabled={annualGoalLocked} className={annualGoalId === goal.id ? "selected" : ""} onClick={() => setAnnualGoalId(goal.id)}><header><span>{"★".repeat(goal.stars)}</span><b>{goal.title}</b></header><p>{goal.description}</p><small>奖励 · ¥{money(goal.reward.cash)} / {goal.reward.xp} XP / {goal.reward.reputation} 声望</small>{annualGoalId === goal.id && <i>{annualGoalLocked ? "目标已锁定" : "已选择 · 开始后锁定"}</i>}</button>)}</div>
               <SectionTitle number="1" title="片名与电影题材" note="市场热度会随档期与年份变化" />
               <label className="title-input"><span>项目片名</span><input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={12} /></label>
               <div className="genre-grid">
-                {genreMarket.map((item) => <button key={item.name} className={`genre-card ${genre.name === item.name ? "selected" : ""}`} onClick={() => { setGenre(item); setScriptAnswers({}); setScriptReport(null); setCast([]); setDeals({}); setEventChoice(null); }} aria-pressed={genre.name === item.name}>
+                {genreMarket.map((item) => <button key={item.name} className={`genre-card ${genre.name === item.name ? "selected" : ""}`} onClick={() => { setGenre(item); setScriptAnswers({}); setScriptReport(null); setRewriteCost(0); setRewriteMarketDelta(0); setCast([]); setDeals({}); setEventChoice(null); setProductionChoices([null, null, null]); }} aria-pressed={genre.name === item.name}>
                   <span className="genre-icon" style={{ background: genre.name === item.name ? item.color : undefined }}>{item.icon}</span><strong>{item.name}</strong><small>市场热度 · {item.marketNote ?? "本年行情"}</small><div className="heat-row"><div className="heat"><i style={{ width: `${item.heat}%`, background: item.color }} /></div><b>{item.heat}</b></div>{item.heatChange !== undefined && <span className={`market-shift ${item.heatChange >= 0 ? "up" : "down"}`}>{item.heatChange >= 0 ? "↑" : "↓"}{Math.abs(item.heatChange)}</span>}{genre.name === item.name && <span className="picked">已选择</span>}
                 </button>)}
               </div>
               <SectionTitle number="2" title="制作规模" note={`公司当前可用资金 ¥${money(cash)}`} />
               <div className="budget-choice">{budgets.map((item) => <button key={item.name} className={budget.name === item.name ? "selected" : ""} onClick={() => setBudget(item)}>{item.name}<small>¥{money(Math.round(item.value * industryCostIndex))}</small></button>)}</div>
               <div className="cost-index-note"><span>行业成本指数 ×{industryCostIndex.toFixed(2)}</span><p>场地、器材、保险与人工会随年份上涨；高等级公司也承担更高年度运营成本。</p></div>
-              <ActionBar label={`${title || "未命名"} · ${genre.name}`} detail={`制作预算 ¥${money(currentBudgetCost)} · 确认后立即支付`} button="开始剧本创作" disabled={!title.trim() || projectPaymentDelta(currentBudgetCost, projectCostPaid) > cash} onClick={() => commitProjectCost(currentBudgetCost, 1)} />
+              <ActionBar label={annualGoal ? `${annualGoal.title} · ${title || "未命名"}` : "请先选择年度委托"} detail={`制作预算 ¥${money(currentBudgetCost)} · 确认后立即支付${annualGoal ? ` · ${annualGoal.description}` : ""}`} button="开始剧本创作" disabled={!annualGoal || !title.trim() || projectPaymentDelta(currentBudgetCost, projectCostPaid) > cash} onClick={() => { setAnnualGoalLocked(true); commitProjectCost(currentBudgetCost, 1); }} />
             </>
           )}
 
@@ -999,7 +1103,7 @@ export default function Home() {
                     <div className="question-head"><span>Q{questionIndex + 1}</span><div><h2>{question.title}</h2><p>{question.prompt}</p></div></div>
                     <div className="script-options">{question.options.map((option) => {
                       const selected = scriptAnswers[question.id] === option.id;
-                      return <button key={option.id} className={selected ? "selected" : ""} onClick={() => { setScriptAnswers((answers) => ({ ...answers, [question.id]: option.id })); setScriptReport(null); }} aria-pressed={selected}><b>{option.label}</b><small>{option.description}</small>{selected && <i>已勾选</i>}</button>;
+                      return <button key={option.id} className={selected ? "selected" : ""} onClick={() => { setScriptAnswers((answers) => ({ ...answers, [question.id]: option.id })); setScriptReport(null); setRewriteCost(0); setRewriteMarketDelta(0); }} aria-pressed={selected}><b>{option.label}</b><small>{option.description}</small><span className="option-tradeoff"><em>＋ {option.upside}</em><em>－ {option.tradeoff}</em></span>{selected && <i>已勾选</i>}</button>;
                     })}</div>
                   </section>)}
                 </div>
@@ -1013,8 +1117,9 @@ export default function Home() {
                   <div><span>评审结论</span><h2>{scriptReport.verdict}</h2><p>该评分将影响导演与演员的邀约意愿、报价以及最终成片质量。</p></div>
                 </div>
                 <div className="script-dimensions"><h3>剧本质量评估</h3><Metric label="叙事结构" value={scriptReport.story} /><Metric label="人物塑造" value={scriptReport.character} /><Metric label="市场潜力" value={scriptReport.market} /><Metric label="原创表达" value={scriptReport.originality} /><div className="producer-writing-bonus"><span>选择基础分 <b>{scriptReport.baseScore}</b></span><i>+</i><span>Lv.{studioLevel} 制片经验 <b>+{scriptReport.levelBonus}</b></span><strong>最终评分 {scriptReport.score}</strong></div><p>制片经验只提供 0—4 分的温和修正；演员仍会比较最终剧本分数与自己的接戏门槛。</p></div>
+                <div className="rewrite-panel"><header><div><span>ONCE PER FILM</span><b>{scriptReport.rewritten ? "本片改稿已完成" : "一次定向改稿机会"}</b></div><small>{scriptReport.rewritten ? `追加成本 ¥${money(rewriteCost)} · 市场热度 ${rewriteMarketDelta >= 0 ? "+" : ""}${rewriteMarketDelta}` : "选择后立即锁定，不能反复刷分"}</small></header><div>{([{ id: "structure", title: "结构重写", effect: "叙事 +7 / 市场 -3", cost: 900 }, { id: "character", title: "人物精修", effect: "人物 +7 / 市场 -2", cost: 700 }, { id: "commercial", title: "商业化改稿", effect: "市场 +8 / 人物 -3 / 原创 -4", cost: 600 }] as const).map((plan) => <button type="button" key={plan.id} disabled={scriptReport.rewritten} onClick={() => applyRewrite(plan.id)}><b>{plan.title}</b><span>{plan.effect}</span><small>追加 ¥{money(plan.cost)}</small></button>)}</div></div>
                 <div className="script-paper-actions result-actions">
-                  <button className="paper-back" type="button" onClick={() => showScriptPaper(null)}>返回修改</button>
+                  <button className="paper-back" type="button" disabled={scriptReport.rewritten} onClick={() => showScriptPaper(null)}>{scriptReport.rewritten ? "改稿已锁定" : "返回修改"}</button>
                   <button className="paper-confirm" type="button" onClick={() => moveToStage(2)}><span>确认评分，前往选角</span><i>→</i></button>
                 </div>
               </>}
@@ -1055,12 +1160,10 @@ export default function Home() {
                 </div>
                 <div className="production-stats"><header><div><span>PRODUCTION MONITOR</span><h3>制作状态</h3></div><i><b /> REC</i></header><Metric label="剧本质量" value={scriptScore} /><Metric label="题材适配" value={Math.min(100, 64 + fit)} /><Metric label="班底实力" value={Math.round(((director?.skill ?? 0) + cast.reduce((sum, item) => sum + item.acting, 0) / 2) / 2)} /><Metric label="主演默契" value={chemistry ?? 60} /><Metric label="预算保障" value={budget.name === "大片级" ? 94 : budget.name === "标准制作" ? 78 : 61} /><div className="crew-line"><span>DIRECTOR <b>{director?.name}</b></span><span>CAST <b>{cast.map((item) => item.name).join(" / ")}</b></span></div></div>
               </div>
-              <div className={`event-dialogue ${eventChoice ? "resolved" : ""}`} role="dialog" aria-labelledby="production-event-title">
-                <header><div><small>现场制片</small><b id="production-event-title">{productionEvent.title}</b></div><i>{eventChoice ? "决定已记录" : "突发情况"}</i></header>
-                <div className="event-message"><p>{productionEvent.description}</p></div>
-                <div className="event-options"><button className={eventChoice === "safe" ? "selected" : ""} onClick={() => setEventChoice("safe")}><span>A</span><div><b>{productionEvent.safe.label}</b><small>{productionEvent.safe.hint}{productionEvent.safe.cost ? ` · 当年成本 ¥${money(Math.round(productionEvent.safe.cost * industryCostIndex))}` : ""}</small></div><i>{eventChoice === "safe" ? "✓ 已决定" : "选择"}</i></button><button className={eventChoice === "bold" ? "selected" : ""} onClick={() => setEventChoice("bold")}><span>B</span><div><b>{productionEvent.bold.label}</b><small>{productionEvent.bold.hint}{productionEvent.bold.cost ? ` · 当年成本 ¥${money(Math.round(productionEvent.bold.cost * industryCostIndex))}` : ""}</small></div><i>{eventChoice === "bold" ? "✓ 已决定" : "选择"}</i></button></div>
-              </div>
-              <ActionBar label={`${budget.name} · ${genre.name}`} detail={`制作与主创 ¥${money(totalBeforeRelease)} · 完片保险 ¥${money(overheadCost)}${currentEventCost ? ` · 事件追加 ¥${money(currentEventCost)}` : ""}`} button="完成制作并送审" disabled={!eventChoice || projectPaymentDelta(totalBeforeRelease + overheadCost + currentEventCost, projectCostPaid) > cash} onClick={() => commitProjectCost(totalBeforeRelease + overheadCost + currentEventCost, 4)} back={() => moveToStage(2)} />
+              <SectionTitle number="3" title="三段式片场决策" note="开机 → 中期 → 后期，前一选择会改变下一阶段" />
+              <div className="production-chain-summary"><div><span>已处理</span><b>{productionTotals.resolved}/3</b></div><div><span>累计质量</span><b>{productionTotals.quality >= 0 ? "+" : ""}{productionTotals.quality}</b></div><div><span>市场热度</span><b>{productionTotals.market >= 0 ? "+" : ""}{productionTotals.market}</b></div><div><span>士气 / 档期风险</span><b>{productionTotals.morale >= 0 ? "+" : ""}{productionTotals.morale} / {productionTotals.scheduleRisk >= 0 ? "+" : ""}{productionTotals.scheduleRisk}</b></div></div>
+              <div className="event-chain">{productionChain.map((productionEvent, index) => { const locked = index > productionTotals.resolved; const selected = productionChoices[index]; return <div className={`event-card ${locked ? "locked" : ""}`} key={productionEvent.id}><header><span>0{index + 1}</span><div><small>{productionEvent.stage}阶段</small><b>{productionEvent.title}</b></div><i>{selected ? "已决策" : locked ? "等待前序" : "待处理"}</i></header><p>{productionEvent.description}</p>{index > 0 && productionTotals.notes[index - 1] && <div className="causal-note">因上一阶段：{productionTotals.notes[index - 1]}</div>}<div className="event-options">{(["safe", "bold"] as const).map((choice) => <button disabled={locked || Boolean(selected)} key={choice} className={selected === choice ? "selected" : ""} onClick={() => setProductionChoices((current) => current.map((value, choiceIndex) => choiceIndex === index ? choice : value))}><b>{productionEvent[choice].label}</b><small>{productionEvent[choice].hint}{productionEvent[choice].cost ? ` · 基础成本 ¥${money(Math.round(productionEvent[choice].cost * industryCostIndex))}` : ""}</small><em>{productionEvent[choice].consequence}</em></button>)}</div></div>; })}</div>
+              <ActionBar label={`${budget.name} · ${genre.name}`} detail={`制作与主创 ¥${money(totalBeforeRelease)} · 完片保险 ¥${money(overheadCost)}${currentEventCost ? ` · 事件追加 ¥${money(currentEventCost)}` : ""}${rewriteCost ? ` · 改稿 ¥${money(rewriteCost)}` : ""}`} button="完成制作并送审" disabled={productionTotals.resolved < 3 || projectPaymentDelta(totalBeforeRelease + overheadCost + currentEventCost + rewriteCost, projectCostPaid) > cash} onClick={() => commitProjectCost(totalBeforeRelease + overheadCost + currentEventCost + rewriteCost, 4)} back={() => moveToStage(2)} />
             </>
           )}
 
@@ -1075,10 +1178,10 @@ export default function Home() {
               <SectionTitle number="2" title="制定宣发计划" note="宣发成本将在上映前支付" />
               <div className="release-key-art"><div className="campaign-poster"><span>{genre.icon}</span><small>星火影业 出品</small><h2>{title}</h2><p>{genre.name}</p></div><div><span>宣发主视觉</span><b>电影海报已移交发行团队</b><p>这张主视觉将在定档官宣、城市路演和影院物料中使用，不再占用拍摄现场的场记信息位。</p></div></div>
               <div className="marketing-grid">{marketing.map((item) => <button key={item.name} className={promo.name === item.name ? "selected" : ""} onClick={() => setPromo(item)}><strong>{item.name}</strong><span>¥{money(Math.round(item.value * industryCostIndex))}</span><small>宣发强度 {item.power} · 首日触达 ×{item.boost.toFixed(2)}</small></button>)}</div>
-              <div className="forecast"><span>行业预测</span><b>{scriptScore >= 84 ? "口碑潜力突出" : scriptScore < 70 ? "剧本风险较高" : genre.heat >= 85 ? "热度领先" : "稳健开局"}</b><p>剧本 {scriptScore} · 同档分流 {Math.round(competitionPressure * 100)}% · 档期 ×{slot.boost} · 公司触达 ×{studioReach.toFixed(2)}</p></div>
+              <div className="forecast"><span>行业预测</span><b>{scriptScore >= 84 ? "口碑潜力突出" : scriptScore < 70 ? "剧本风险较高" : genre.heat >= 85 ? "热度领先" : "稳健开局"}</b><p>剧本 {scriptScore} · 同档分流 {Math.round(competitionPressure * 100)}% · 档期 ×{slot.boost} · 公司触达 ×{studioReach.toFixed(2)} · 档期风险影响 ×{scheduleEfficiency.toFixed(2)}</p></div>
               {investmentClaimed && <div className="financing-obligation"><span>投</span><div><b>本年度已引入外部投资 ¥{money(annualInvestment)}</b><p>上映后投资方抽取片方34%分账收入的10%，回收上限为 ¥{money(annualInvestment * 1.5)}；剩余收入才进入项目结算。</p></div></div>}
-              <div className="ticket-formula"><div><span>内容底盘</span><b>剧本 {scriptScore}</b><small>剧本低于65分时，最终观众评分最高只能达到6.5</small></div><div><span>主创号召</span><b>{Math.round(((director?.appeal ?? 0) + cast.reduce((sum, actor) => sum + actor.appeal, 0)) / 3)}</b><small>演员评级额外提供开画 +{castTierOpeningBonus.toFixed(1)}，但不能替代口碑</small></div><div><span>发行放大</span><b>×{(slot.boost * promo.boost).toFixed(2)}</b><small>高宣发抬升开画，但投入越高边际收益越低</small></div><div><span>同期竞争</span><b>-{Math.round(competitionPressure * 100)}%</b><small>竞品分流开画观众，并持续争夺排片</small></div><div className="studio-factor"><span>制片人基本盘</span><b>×{studioReach.toFixed(2)}</b><small>只强化开画，等级与声望影响会逐日衰减</small></div></div>
-              <div className="cost-breakdown"><span>制作与主创 <b>¥{money(totalBeforeRelease)}</b></span><span>完片保险与管理 <b>¥{money(overheadCost)}</b></span><span>宣发及追加 <b>¥{money(currentPromoCost + currentEventCost)}</b></span><strong>总投资 ¥{money(totalCost)}</strong></div>
+              <div className="ticket-formula"><div><span>内容底盘</span><b>剧本 {scriptScore}</b><small>剧本低于65分时，最终观众评分最高只能达到6.5</small></div><div><span>主创号召</span><b>{Math.round(((director?.appeal ?? 0) + cast.reduce((sum, actor) => sum + actor.appeal, 0)) / 3)}</b><small>演员评级额外提供开画 +{castTierOpeningBonus.toFixed(1)}，但不能替代口碑</small></div><div><span>发行放大</span><b>×{(slot.boost * promo.boost).toFixed(2)}</b><small>高宣发抬升开画，但投入越高边际收益越低</small></div><div><span>同期竞争</span><b>-{Math.round(competitionPressure * 100)}%</b><small>竞品分流开画观众，并持续争夺排片</small></div><div><span>档期风险影响</span><b>×{scheduleEfficiency.toFixed(2)}</b><small>{productionTotals.scheduleRisk > 0 ? `累计 +${productionTotals.scheduleRisk} 风险，每点降低 2.5% 开画效率，最多降低 10%` : "风险已控制；负风险不会额外提高票房"}</small></div><div className="studio-factor"><span>制片人基本盘</span><b>×{studioReach.toFixed(2)}</b><small>只强化开画，等级与声望影响会逐日衰减</small></div></div>
+              <div className="cost-breakdown"><span>制作与主创 <b>¥{money(totalBeforeRelease)}</b></span><span>完片保险与管理 <b>¥{money(overheadCost)}</b></span><span>宣发及片场追加 <b>¥{money(currentPromoCost + currentEventCost)}</b></span>{rewriteCost > 0 && <span>剧本改稿 <b>¥{money(rewriteCost)}</b></span>}<strong>总投资 ¥{money(totalCost)}</strong></div>
               <ActionBar label={`${slot.name} · ${promo.name}`} detail={`总投资 ¥${money(totalCost)} · 待支付宣发 ¥${money(Math.max(0, projectPaymentDelta(totalCost, projectCostPaid)))} · 同档分流 ${Math.round(competitionPressure * 100)}%`} button="全国上映，揭晓票房" disabled={projectPaymentDelta(totalCost, projectCostPaid) > cash} onClick={simulate} back={() => moveToStage(3)} />
             </>
           )}
@@ -1090,7 +1193,7 @@ export default function Home() {
                 <div className="result-hero"><div><span>{revealedDays === 7 ? "TOTAL 30-DAY BOX OFFICE" : "LIVE WEEK GROSS"}</span><strong>¥{money(revealedDays === 7 ? result.gross : liveWeekGross)}</strong><p>{revealedDays === 7 ? "首周播报结束 · 长尾票房模型已完成" : `院线数据实时接入 · DAY ${revealedDays}/7`}</p></div><div className="score-seal"><b>{latestReport?.audienceScore ?? "--"}</b><span>AUDIENCE</span></div></div>
                 <div className="result-grid"><ResultStat label="成片质量" value={`${result.quality}`} unit="/100" /><ResultStat label={revealedDays === 7 ? "30日观影人次" : "当前观影人次"} value={`${((revealedDays === 7 ? result.audience : liveWeekGross * 10000 / 42) / 10000).toFixed(1)}`} unit="万人" /><ResultStat label="今日票房" value={latestReport ? `¥${money(latestReport.boxOffice)}` : "待公布"} unit="" /><ResultStat label="正向口碑" value={latestReport ? `${latestReport.positiveRate}` : "--"} unit="%" /></div>
               </div>
-              <div className="rollout-controls"><div className="broadcast-status"><i className={autoPlay && revealedDays < 7 ? "live" : ""} /><span><small>LIVE DATA STREAM</small><b>{revealedDays === 7 ? "七日数据已全部发布" : revealedDays === 0 ? "等待首日票房出炉" : `第 ${revealedDays} 天票房与舆情已同步`}</b></span></div><div className="rollout-buttons"><button onClick={() => setAutoPlay((value) => !value)} disabled={revealedDays >= 7}>{autoPlay ? "暂停直播" : "继续直播"}</button><button onClick={() => { setAutoPlay(false); setRevealedDays((value) => Math.min(7, value + 1)); }} disabled={revealedDays >= 7}>下一天</button><button onClick={() => { setAutoPlay(false); setRevealedDays(7); }} disabled={revealedDays >= 7}>快进首周</button></div></div>
+              <div className="rollout-controls"><div className="broadcast-status"><i className={autoPlay && revealedDays < 7 ? "live" : ""} /><span><small>LIVE DATA STREAM</small><b>{revealedDays === 7 ? "七日数据已发布 · 30日片方回款已结清" : revealedDays === 0 ? "等待首日票房出炉" : `第 ${revealedDays} 天票房已同步 · 当日片方回款已入账`}</b></span></div><div className="rollout-buttons"><button onClick={() => setAutoPlay((value) => !value)} disabled={revealedDays >= 7}>{autoPlay ? "暂停直播" : "继续直播"}</button><button onClick={() => { setAutoPlay(false); setRevealedDays((value) => Math.min(7, value + 1)); }} disabled={revealedDays >= 7}>下一天</button><button onClick={() => { setAutoPlay(false); setRevealedDays(7); }} disabled={revealedDays >= 7}>快进首周</button></div></div>
               <div className="live-feed-terminal" ref={liveFeedRef} aria-live="polite">
                 <div className="live-feed-head"><div><i className={autoPlay && revealedDays < 7 ? "live" : ""} /><span>SOCIAL PULSE</span></div><b>影院散场与全网舆情</b><em>{revealedDays ? `DAY ${String(revealedDays).padStart(2, "0")}` : "STANDBY"}</em></div>
                 <div className="daily-feed">
@@ -1099,7 +1202,7 @@ export default function Home() {
                 </div>
               </div>
               <SectionTitle number="DATA" title="首周票房曲线" note="单位：万元" />
-              <div className={`trend-summary trend-${revealedDays === 7 ? result.trend : "live"}`}><div><span>{revealedDays === 7 ? "首周走势判定" : "AI 实时走势研判"}</span><b>{liveTrend}</b><p>{liveTrendNote}</p></div><dl><dt>开画能力</dt><dd>{result.openingPower}</dd><dt>同档分流</dt><dd>{Math.round((result.competitionPressure ?? 0) * 100)}%</dd><dt>实时评分</dt><dd>{latestReport?.audienceScore ?? "--"}</dd><dt>评分走势</dt><dd>{latestReport ? `${result.dailyReports[0].audienceScore} → ${latestReport.audienceScore}` : "--"}</dd><dt>正向口碑</dt><dd>{latestReport ? `${latestReport.positiveRate}%` : "--"}</dd></dl></div>
+              <div className={`trend-summary trend-${revealedDays === 7 ? result.trend : "live"}`}><div><span>{revealedDays === 7 ? "首周走势判定" : "实时走势研判"}</span><b>{liveTrend}</b><p>{liveTrendNote}</p></div><dl><dt>开画能力</dt><dd>{result.openingPower}</dd><dt>档期风险</dt><dd>{(result.scheduleRisk ?? 0) > 0 ? `+${result.scheduleRisk} · ×${(result.scheduleEfficiency ?? 1).toFixed(2)}` : `已控制 · ×${(result.scheduleEfficiency ?? 1).toFixed(2)}`}</dd><dt>同档分流</dt><dd>{Math.round((result.competitionPressure ?? 0) * 100)}%</dd><dt>实时评分</dt><dd>{latestReport?.audienceScore ?? "--"}</dd><dt>评分走势</dt><dd>{latestReport ? `${result.dailyReports[0].audienceScore} → ${latestReport.audienceScore}` : "--"}</dd><dt>正向口碑</dt><dd>{latestReport ? `${latestReport.positiveRate}%` : "--"}</dd></dl></div>
               <div className="score-model-note"><span>评分驱动票房</span><p>剧本、导演、表演与成片质量决定最终评分；宣发和明星号召只负责开画。每日新评分与同期竞品会共同改变次日购票及排片留存。</p></div>
               <div className="box-office-chart">{result.dailyReports.map((report, index) => { const isRevealed = index < revealedDays; return <div key={report.day} className={!isRevealed ? "pending-day" : report.change !== null && report.change >= 0 ? "rising" : "falling"}><b>{isRevealed ? money(report.boxOffice) : "待公布"}</b><em>{isRevealed ? report.change === null ? "首日" : `${report.change >= 0 ? "+" : ""}${report.change}%` : "—"}</em><span style={{ height: isRevealed ? `${32 + report.boxOffice / Math.max(...result.days) * 100}px` : "14px" }} /><small>第{report.day}天</small></div>; })}</div>
               {revealedDays === 7 && <>
@@ -1108,8 +1211,9 @@ export default function Home() {
                 <SectionTitle number="结" title="项目与生涯结算" note={`院线分账后片方按 34% 回款${result.investorShare ? "，先结算投资方分成" : ""}，剩余盈利继续结算税费与主创分成`} />
                 <div className="growth-result"><div><span>制片人经验</span><b>+{result.xpGain} XP</b><small>当前 Lv.{studioLevel} · {studioXpProgress}/180</small></div><div><span>行业声望</span><b className={result.reputationGain >= 0 ? "positive" : "negative"}>{result.reputationGain >= 0 ? "+" : ""}{result.reputationGain}</b><small>当前声望 {reputation}</small></div><div><span>项目收益</span><b className={result.profit >= 0 ? "positive" : "negative"}>{result.profit >= 0 ? "+" : "-"}¥{money(Math.abs(result.profit))}</b><small>30日票房 ¥{money(result.gross)} · 片方分账 ¥{money(result.studioRevenue)}{result.investorShare ? ` · 投资方分成 -¥${money(result.investorShare)}` : ""}</small></div></div>
                 <div className="career-update"><span>艺人动态</span><b>{cast.map((actor) => actor.name).join("、")}获得项目经验；下一年度的号召力和身价将按照票房回本倍数重新评估。自社新人若以高演技搭档高人气演员，还会获得额外曝光成长。</b></div>
-                <SectionTitle number="奖" title="年度电影荣誉" note={result.awards.length ? `共获 ${result.awards.length} 项 · 奖项已计入经验与声望` : "继续积累作品与行业声望"} />
-                <div className="awards-row">{result.awards.length ? result.awards.map((award) => <div key={award}><span>★</span><b>{award}</b><small>{award === "最佳表演" && performanceLead ? `${performanceLead.name} 获奖${performanceLead.acting >= 93 ? ` · 解锁${performanceLead.gender === "女" ? "影后" : "影帝"}称号` : ""}` : `第 ${year} 届金幕奖`} · 结算权重 +20 XP / +12 声望</small></div>) : <div className="no-award"><span>—</span><b>本届惜未获奖</b><small>质量达到 88 或形成突出主创优势可冲击奖项</small></div>}</div>
+                {annualGoal && result.goalOutcome && <><SectionTitle number="委" title="年度委托结算" note={result.goalOutcome.completed ? "目标达成，额外奖励已发放" : "未达成不扣除资源，保留本次经验"} /><div className={`goal-result ${result.goalOutcome.completed ? "complete" : "missed"}`}><span>{result.goalOutcome.completed ? "✓" : "↗"}</span><div><small>{annualGoal.title} · {"★".repeat(annualGoal.stars)}</small><b>{result.goalOutcome.completed ? "委托完成" : "本年惜未完成"}</b><p>{result.goalOutcome.explanation}</p><i>{result.goalOutcome.progressLabel}</i></div><strong>{result.goalOutcome.completed ? `+¥${money(result.goalOutcome.reward.cash)} · +${result.goalOutcome.reward.xp} XP · +${result.goalOutcome.reward.reputation} 声望` : "下一年会刷新三个新目标"}</strong></div></>}
+                <SectionTitle number="奖" title="金幕奖提名与获奖" note={`${result.nominations?.filter((item) => item.nominated).length ?? result.awards.length} 项提名 · ${result.awards.length} 项获奖（本片最多 ${result.awardCap ?? Math.max(2, result.awards.length)} 项）`} />
+                <div className="awards-row nomination-list">{result.nominations?.map((nomination) => <div className={nomination.won ? "won" : nomination.nominated ? "nominated" : "not-nominated"} key={nomination.category}><span>{nomination.won ? "★" : nomination.nominated ? "◇" : "—"}</span><b>{nomination.category}<i>{nomination.won ? "获奖" : nomination.nominated ? "提名" : "未提名"}</i></b><small>{nomination.note}{nomination.category === "最佳表演" && nomination.won && performanceLead?.acting && performanceLead.acting >= 93 ? ` ${performanceLead.name}解锁${performanceLead.gender === "女" ? "影后" : "影帝"}称号。` : ""}</small></div>) ?? (result.awards.length ? result.awards.map((award) => <div className="won" key={award}><span>★</span><b>{award}</b><small>旧存档奖项记录</small></div>) : <div className="no-award"><span>—</span><b>本届惜未获奖</b><small>完成新一年度作品即可进入提名比较。</small></div>)}</div>
                 <div className="year-end"><div><span>经纪业务已解锁</span><b>把电影收益变成公司的长期艺人资产。</b><small>签约成熟艺人，或从新人开始培养下一位明星</small></div><button onClick={enterCompanyManagement}>进入公司经营期 <i>→</i></button></div>
               </>}
             </>
@@ -1123,6 +1227,7 @@ export default function Home() {
                 <div><span>年度培训</span><b>{usedTrainingSlots}<small>/{yearlyTrainingCapacity} 次</small></b><p>每位艺人每年限训一次</p></div>
                 <div><span>固定年薪</span><b>¥{money(annualPayroll)}</b><p>签约时预付首年薪资</p></div>
                 <div><span>公司资金</span><b>¥{money(cash)}</b><p>留足下一部电影制作预算</p></div>
+                <div className="library-asset-card"><span>近三部片库资产</span><b>¥{money(projectedLibraryIncome)}<small>/ 年</small></b><p>{projectedLibraryHistory.length ? `${projectedLibraryHistory.length} 部 · 累计票房 ¥${money(libraryGross)} · ${libraryAwards} 项奖 · 单片最高900万、片库最高1,800万` : "完成电影后，版权与长尾发行会形成有上限的年度收益"}</p></div>
               </div>
               <div className="agency-level-track"><span>经纪部随制片人等级自动扩容</span><div><i style={{ width: `${studioLevel / 10 * 100}%` }} /></div><b>Lv.{studioLevel} · {rosterCapacity} 席</b></div>
               <div className="company-tabs" role="tablist" aria-label="公司经营分类">
@@ -1147,9 +1252,9 @@ export default function Home() {
                   const appealTrainingGain = trainingGain(actor.appeal, contract);
                   const renewal = talentRenewalQuote({ ...actor, fee: settledFee }, contract);
                   return <article className="owned-talent" key={actor.id}>
-                    <header><PortraitAvatar person={actor} group={contract.origin === "rookie" ? "rookie" : "actor"} /><div><b>{actor.name}{actorHonorTitle(actor, actorHonors) ? ` · ${actorHonorTitle(actor, actorHonors)}` : ""}</b><small>{profile.tier}级 · 综合 {actor.acting + actor.appeal} · {contract.origin === "rookie" ? "自社培养" : "成熟艺人"} · {actorAge(actor, year, contract)}岁</small></div><i>{retirementAge(actor.id)}岁退休 · 合约至第 {contract.contractEndYear} 年</i></header>
+                    <header><PortraitAvatar person={actor} group={actor.id >= 100 ? "rookie" : "actor"} /><div><b>{actor.name}{actorHonorTitle(actor, actorHonors) ? ` · ${actorHonorTitle(actor, actorHonors)}` : ""}</b><small>{profile.tier}级 · 综合 {actor.acting + actor.appeal} · {contract.origin === "rookie" ? "自社培养" : "成熟艺人"} · {actorAge(actor, year, contract)}岁</small></div><i>{retirementAge(actor.id)}岁退休 · 合约至第 {contract.contractEndYear} 年{contract.contractEndYear === year && <em className="contract-expiry-inline">今年到期</em>}</i></header>
                     <div className="owned-stats"><span>演技 <b>{actor.acting}</b></span><span>号召 <b>{actor.appeal}</b></span><span>潜力 <b>{contract.potential}</b></span><span>忠诚 <b>{contract.loyalty}</b></span></div>
-                    <div className="owned-economy"><div><span>自制片内部价</span><b>¥{money(internalFee)}</b><small>市场价 ¥{money(settledFee * TALENT_COST_SCALE)} · 内部率 {Math.round(contract.internalRate * 100)}%{settledFee > actor.fee ? " · 本片后上调" : ""}</small></div><div><span>闲置年预计分成</span><b>¥{money(outsideIncome)}</b><small>公司抽成 {Math.round(contract.agencyShare * 100)}%</small></div><div><span>固定年薪</span><b>¥{money(contract.annualSalary)}</b><small>{contract.origin === "rookie" ? `累计主演 ${(contract.filmCredits ?? 0) + (cast.some((item) => item.id === actor.id) ? 1 : 0)} 部` : "下一年度自动结算"}</small></div></div>
+                    <div className="owned-economy"><div><span>自制片内部价</span><b>¥{money(internalFee)}</b><small>市场价 ¥{money(settledFee * TALENT_COST_SCALE)} · 内部率 {Math.round(contract.internalRate * 100)}%{settledFee > actor.fee ? " · 本片后上调" : ""}</small></div><div><span>闲置年预计分成</span><b>¥{money(outsideIncome)}</b><small>公司抽成 {Math.round(contract.agencyShare * 100)}%</small></div><div><span>{contract.origin === "rookie" ? "阶梯年薪" : "固定年薪"}</span><b>¥{money(contract.annualSalary)}</b><small>{contract.origin === "rookie" ? `累计主演 ${(contract.filmCredits ?? 0) + (cast.some((item) => item.id === actor.id) ? 1 : 0)} 部 · 随履历上调` : "下一年度自动结算"}</small></div></div>
                     <div className="genre-chips">{actor.genres.map((item) => <span key={item}>{item}</span>)}{Object.entries(contract.genreProgress).filter(([item, progress]) => !actor.genres.includes(item) && progress > 0).map(([item, progress]) => <span className="learning" key={item}>{item} {Math.min(99, progress)}%</span>)}</div>
                     <div className="training-panel"><div><span>本年度专项培养</span><small>{trained ? "已完成" : `全员可培养 · 尚余 ${yearlyTrainingCapacity - usedTrainingSlots} 次`}</small></div><div className="training-buttons"><button disabled={trained || usedTrainingSlots >= yearlyTrainingCapacity || cash < 600 || actingTrainingGain === 0} onClick={() => trainTalent(actor.id, "acting")}><b>表演进修</b><small>¥600万 · 演技 {actingTrainingGain ? `+${actingTrainingGain}` : "已达上限"}</small></button><button disabled={trained || usedTrainingSlots >= yearlyTrainingCapacity || cash < 800 || appealTrainingGain === 0} onClick={() => trainTalent(actor.id, "appeal")}><b>形象经营</b><small>¥800万 · 号召 {appealTrainingGain ? `+${appealTrainingGain}` : "已达上限"}</small></button><div className="genre-training"><select value={selectedGenre} onChange={(event) => setTrainingGenre((current) => ({ ...current, [actor.id]: event.target.value }))} aria-label={`选择${actor.name}的类型训练方向`}>{genres.filter((item) => !actor.genres.includes(item.name)).map((item) => <option key={item.name}>{item.name}</option>)}</select><button disabled={!selectedGenre || trained || usedTrainingSlots >= yearlyTrainingCapacity || cash < 700} onClick={() => trainTalent(actor.id, "genre")}><b>类型训练</b><small>¥700万 · 适应度 +60</small></button></div></div></div>
                     {contract.contractEndYear <= year + 1 && <button className="renew-button" onClick={() => renewTalent(actor.id)}>续约三年 · ¥{money(renewal.renewalFee)}{contract.origin === "rookie" && renewal.annualSalary > contract.annualSalary ? ` · 新年薪 ¥${money(renewal.annualSalary)}` : ""}</button>}
@@ -1165,7 +1270,8 @@ export default function Home() {
                   const quote = matureContractQuote(actor, profile);
                   const firstPayment = quote.signingFee + quote.annualSalary;
                   const unavailable = signedTalents.length >= rosterCapacity || cash < firstPayment || reputation < quote.requiredReputation;
-                  return <article className="signing-card" key={actor.id}><header><PortraitAvatar person={actor} group="actor" /><div><b>{actor.name}{actorHonorTitle(actor, actorHonors) ? ` · ${actorHonorTitle(actor, actorHonors)}` : ""}</b><small>{profile.tier}级 · 综合 {actor.acting + actor.appeal} · {actor.tag}</small></div><i>{profile.age + year - 1}岁 · {careerStage(profile, profile.age + year - 1)}</i></header><div className="signing-stats"><span>演技 <b>{actor.acting}</b></span><span>号召 <b>{actor.appeal}</b></span><span>当前身价 <b>¥{money(actor.fee * TALENT_COST_SCALE)}</b></span></div><p>{actor.genres.join(" · ")} · 预计 {retirementAge(actor.id)} 岁退休</p><div className="contract-price"><span>签约费 ¥{money(quote.signingFee)}</span><span>年薪 ¥{money(quote.annualSalary)}</span><b>首期 ¥{money(firstPayment)}</b></div><button disabled={unavailable} onClick={() => setSigningTarget({ actor, origin: "mature" })}>{signedTalents.length >= rosterCapacity ? "签约名额已满" : reputation < quote.requiredReputation ? `需要声望 ${quote.requiredReputation}` : cash < firstPayment ? "公司资金不足" : "查看三年合约"}</button></article>;
+                  const currentAge = actorAge(actor, year);
+                  return <article className="signing-card" key={actor.id}><header><PortraitAvatar person={actor} group={actor.id >= 100 ? "rookie" : "actor"} /><div><b>{actor.name}{actorHonorTitle(actor, actorHonors) ? ` · ${actorHonorTitle(actor, actorHonors)}` : ""}</b><small>{profile.tier}级 · 综合 {actor.acting + actor.appeal} · {actor.tag}</small></div><i>{currentAge}岁 · {careerStage(profile, currentAge)}</i></header><div className="signing-stats"><span>演技 <b>{actor.acting}</b></span><span>号召 <b>{actor.appeal}</b></span><span>当前身价 <b>¥{money(actor.fee * TALENT_COST_SCALE)}</b></span></div><p>{actor.genres.join(" · ")} · 预计 {retirementAge(actor.id)} 岁退休</p><div className="contract-price"><span>签约费 ¥{money(quote.signingFee)}</span><span>年薪 ¥{money(quote.annualSalary)}</span><b>首期 ¥{money(firstPayment)}</b></div><button disabled={unavailable} onClick={() => setSigningTarget({ actor, origin: "mature" })}>{signedTalents.length >= rosterCapacity ? "签约名额已满" : reputation < quote.requiredReputation ? `需要声望 ${quote.requiredReputation}` : cash < firstPayment ? "公司资金不足" : "查看三年合约"}</button></article>;
                 })}</div>
               </div>}
 
@@ -1192,6 +1298,16 @@ export default function Home() {
       </div>
       </div>}
       </>}
+      {showExpiryReminder && <div className="modal-backdrop expiry-reminder-backdrop">
+        <section className="contract-modal expiry-reminder-modal" role="alertdialog" aria-modal="true" aria-label="艺人合约到期提醒">
+          <p className="eyebrow accent">CONTRACT EXPIRY ALERT</p>
+          <div className="expiry-reminder-symbol">期</div>
+          <h2>艺人合约将在今年到期</h2>
+          <p>以下艺人的合约将在制片第 {year} 年结束。若不续约，达到B级市场门槛的艺人会进入自由市场，未达到门槛的自社新人将退出公开选角。</p>
+          <div className="expiry-talent-list">{expiringTalents.map(({ actor }) => <span key={actor.id}><PortraitAvatar person={actor} group={actor.id >= 100 ? "rookie" : "actor"} mini /><b>{actor.name}</b></span>)}</div>
+          <div className="expiry-reminder-actions"><button type="button" onClick={() => setExpiryReminderDismissedYear(year)}>稍后处理</button><button type="button" onClick={handleExpiryReminderNow}>现在处理</button></div>
+        </section>
+      </div>}
       {showFinance && <div className="modal-backdrop finance-backdrop">
         <button className="modal-dismiss" type="button" aria-label="关闭融资中心" onClick={() => setShowFinance(false)} />
         <section className="contract-modal finance-modal" role="dialog" aria-modal="true" aria-label="片场融资中心">
@@ -1209,7 +1325,7 @@ export default function Home() {
         <section className="contract-modal" role="dialog" aria-modal="true" aria-label={`与${negotiating.name}洽谈片约`}>
           <button className="modal-close" onClick={() => setNegotiating(null)} aria-label="关闭谈判">×</button>
           <p className="eyebrow accent">CONTRACT TALK</p>
-          <div className="contract-head"><PortraitAvatar person={negotiating} group={negotiating.id >= 100 ? "rookie" : "actor"} large /><div><h2>邀请 {negotiating.name}</h2><p>{negotiatingProfile.tier}级艺人 · {negotiatingProfile.age + year - 1}岁 · {careerStage(negotiatingProfile, negotiatingProfile.age + year - 1)}</p></div></div>
+          <div className="contract-head"><PortraitAvatar person={negotiating} group={negotiating.id >= 100 ? "rookie" : "actor"} large /><div><h2>邀请 {negotiating.name}</h2><p>{negotiatingProfile.tier}级艺人 · {actorAge(negotiating, year)}岁 · {careerStage(negotiatingProfile, actorAge(negotiating, year))}</p></div></div>
           <div className="contract-intel"><span>综合评级 <b>{negotiatingProfile.tier} · {negotiating.acting + negotiating.appeal}</b></span><span>职业荣誉 <b>{actorHonorTitle(negotiating, actorHonors) ?? "尚无表演称号"}</b></span><span>角色路线 <b>{negotiatingProfile.archetype}</b></span><span>当前档期 <b>{negotiatingProfile.availability}</b></span><span>舆情风险 <b>{negotiatingProfile.risk}%</b></span><span>题材适配 <b>{negotiating.genres.includes(genre.name) ? "高度匹配" : "跨类型挑战"}</b></span><span>剧本评分 <b>{scriptScore} 分</b></span><span>接戏门槛 <b>{scriptThreshold(negotiatingProfile)} 分</b></span></div>
           <div className={`actor-interest-panel ${scriptScore >= scriptThreshold(negotiatingProfile) + 8 ? "hot" : scriptScore < scriptThreshold(negotiatingProfile) ? "cold" : ""}`}><span>演员读本反馈</span><b>{scriptScore < scriptThreshold(negotiatingProfile) - 14 ? "经纪团队暂不接受邀约" : scriptScore >= scriptThreshold(negotiatingProfile) + 8 ? "非常喜欢这个角色，愿意降低片酬" : scriptScore >= scriptThreshold(negotiatingProfile) ? "剧本达到预期，可以正常洽谈" : "剧本吸引力不足，需要提高报价"}</b></div>
           <h3>选择报价策略</h3>
@@ -1223,13 +1339,13 @@ export default function Home() {
         <section className="contract-modal agency-contract-modal" role="dialog" aria-modal="true" aria-label={`签约${signingTarget.actor.name}`}>
           <button className="modal-close" onClick={() => setSigningTarget(null)} aria-label="取消签约">×</button>
           <p className="eyebrow accent">AGENCY CONTRACT · THREE YEARS</p>
-          <div className="contract-head"><PortraitAvatar person={signingTarget.actor} group={signingTarget.origin === "rookie" ? "rookie" : "actor"} large /><div><h2>签约 {signingTarget.actor.name}</h2><p>{signingTarget.origin === "rookie" ? "新人培养合约" : `${signingTargetProfile.tier}级成熟艺人合约`} · 第 {year + 1}—{year + 3} 制片年</p></div></div>
+          <div className="contract-head"><PortraitAvatar person={signingTarget.actor} group={signingTarget.actor.id >= 100 ? "rookie" : "actor"} large /><div><h2>签约 {signingTarget.actor.name}</h2><p>{signingTarget.origin === "rookie" ? "新人培养合约" : `${signingTargetProfile.tier}级成熟艺人合约`} · 第 {year + 1}—{year + 3} 制片年</p></div></div>
           <div className="agency-contract-summary"><div><span>签约费</span><b>¥{money(activeSigningQuote.signingFee)}</b></div><div><span>首年固定薪资</span><b>¥{money(activeSigningQuote.annualSalary)}</b></div><div className="contract-total"><span>本次支付</span><b>¥{money(activeSigningQuote.signingFee + activeSigningQuote.annualSalary)}</b></div></div>
           <div className="contract-intel"><span>实时评级 <b>{signingTargetProfile.tier} · 综合 {signingTarget.actor.acting + signingTarget.actor.appeal}</b></span><span>签约声望 <b>{activeSigningQuote.requiredReputation}</b></span><span>自制片项目价 <b>市场报价的 {Math.round(activeSigningQuote.internalRate * 100)}%</b></span><span>外部工作抽成 <b>{Math.round(activeSigningQuote.agencyShare * 100)}%</b></span><span>初始忠诚度 <b>{signingTarget.origin === "rookie" ? 82 : 70}</b></span><span>签约后名额 <b>{signedTalents.length + 1}/{rosterCapacity}</b></span></div>
           <div className="contract-payback"><span>经营提示</span><p>{signingTarget.origin === "rookie" ? "新人短期不会带来明显票房，需要持续培训与参演机会；成长后内部成本优势会逐年扩大。" : "成熟艺人连续用于两至三部自制电影，通常能通过内部片酬差额和闲置年度分成收回签约投入。"}</p></div>
           {companyNotice && <div className="negotiation-error">{companyNotice}</div>}
           <button className="confirm-agency-signing" disabled={cash < activeSigningQuote.signingFee + activeSigningQuote.annualSalary || signedTalents.length >= rosterCapacity || reputation < activeSigningQuote.requiredReputation} onClick={confirmCompanySigning}>确认签约并支付 ¥{money(activeSigningQuote.signingFee + activeSigningQuote.annualSalary)}</button>
-          <small className="contract-footnote">合约期满前可续约；不续约的艺人会回到自由市场。首年薪资已包含在本次支付中。</small>
+          <small className="contract-footnote">合约期满前可续约；不续约且达到B级市场门槛的艺人会回到自由市场。首年薪资已包含在本次支付中。</small>
         </section>
       </div>}
       {showResetConfirm && <div className="modal-backdrop">
@@ -1281,12 +1397,12 @@ function CompetitorCard({ movie }: { movie: CompetitorMovie }) {
 function TalentCard({ person, selected, onClick, year, deal, scriptScore = 100, ownedContract, honorTitle }: { person: Director | Actor; selected: boolean; onClick: () => void; year: number; deal?: Deal; scriptScore?: number; ownedContract?: TalentContract; honorTitle?: string | null }) {
   const isDirector = "skill" in person;
   const profile = isDirector ? null : getActorProfile(person);
-  const currentAge = profile ? currentActorAge(profile.age, year, ownedContract?.origin === "rookie" ? ownedContract.signedYear : 1) : 0;
+  const currentAge = profile ? actorAge(person as Actor, year, ownedContract) : 0;
   const threshold = profile ? scriptThreshold(profile) : 0;
   const locked = !isDirector && !ownedContract && scriptScore < threshold - 14;
   const interest = ownedContract ? "旗下艺人 · 档期优先" : locked ? "暂不读本" : scriptScore >= threshold + 8 ? "强烈兴趣" : scriptScore >= threshold ? "愿意洽谈" : "需要溢价";
   return <button className={`talent-card ${selected ? "selected" : ""} ${locked ? "unavailable" : ""}`} onClick={onClick} aria-pressed={selected}>
-    <PortraitAvatar person={person} group={isDirector ? "director" : "actor"} /><div><strong>{person.name}</strong><small>{isDirector ? person.trait : person.tag}</small></div>
+    <PortraitAvatar person={person} group={isDirector ? "director" : person.id >= 100 ? "rookie" : "actor"} /><div><strong>{person.name}</strong><small>{isDirector ? person.trait : person.tag}</small></div>
     {isDirector && <div className={`director-momentum ${(person.momentum ?? 0) > 0 ? "up" : (person.momentum ?? 0) < 0 ? "down" : ""}`}><span>{person.marketNote ?? "本年度档期可约"}</span><b>{person.momentum === undefined ? "NEW" : `${person.momentum >= 0 ? "+" : ""}${person.momentum}`}</b></div>}
     {!isDirector && profile && <div className="profile-badges"><i className={`tier tier-${profile.tier.toLowerCase()}`}>{profile.tier}</i><span>综合 {person.acting + person.appeal}</span>{honorTitle && <span className="honor-title">{honorTitle}</span>}<span>{currentAge}岁</span><span className={`career career-${profile.career}`}>{careerStage(profile, currentAge)}</span><span>{retirementAge(person.id)}岁退休</span></div>}
     {!isDirector && <div className={`script-interest ${ownedContract ? "owned" : locked ? "locked" : scriptScore >= threshold + 8 ? "hot" : ""}`}><span>{ownedContract ? `内部价 ${Math.round(ownedContract.internalRate * 100)}%` : `剧本门槛 ${threshold}`}</span><b>{interest}</b></div>}

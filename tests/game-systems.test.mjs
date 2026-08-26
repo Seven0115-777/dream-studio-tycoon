@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { calculateCompetitionPressure, generateCompetitors } from "../app/competition-system.ts";
-import { annualInvestmentAmount, buildAudienceScoreCurve, buildContentModel, buildReleaseModel, calculateCareerRewards, investorRevenueShare, projectPaymentDelta, studioReachMultiplier } from "../app/economy.ts";
+import { annualInvestmentAmount, boxOfficeSettlementTarget, buildAudienceScoreCurve, buildContentModel, buildReleaseModel, calculateCareerRewards, determineAwards, investorRevenueShare, projectPaymentDelta, scheduleRiskMultiplier, settleAnnualCompanyCash, studioReachMultiplier, yearlyOperatingCost } from "../app/economy.ts";
 import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts";
-import { evaluateScript, getScriptQuestionBank, getScriptQuestions } from "../app/script-engine.ts";
-import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, matureContractQuote, retirementAge, rookieCandidates, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
+import { evaluateScript, getScriptQuestionBank, getScriptQuestions, rewriteScript } from "../app/script-engine.ts";
+import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, judgeAwards, resolveProductionChain } from "../app/game-systems.ts";
+import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
 
 const releaseBase = {
   appeal: 82,
@@ -133,6 +134,26 @@ test("project payments deduct only the newly committed cumulative cost", () => {
   assert.equal(projectPaymentDelta(12500, 13800), -1300);
 });
 
+test("box office cash is credited by revealed day and fully settled on day seven", () => {
+  const weekDays = [1000, 900, 800, 700, 600, 500, 400];
+  assert.equal(boxOfficeSettlementTarget(weekDays, 0, 5000, 300, 700), 0);
+  assert.equal(boxOfficeSettlementTarget(weekDays, 1, 5000, 300, 700), 340);
+  assert.equal(boxOfficeSettlementTarget(weekDays, 3, 5000, 300, 700), 918);
+  assert.equal(boxOfficeSettlementTarget(weekDays, 7, 5000, 300, 700), 4000);
+});
+
+test("every award requires an audience score of at least 8.6", () => {
+  const eliteConditions = { quality: 99, directorScore: 125, acting: 95, chemistry: 94 };
+  assert.deepEqual(determineAwards({ ...eliteConditions, audienceScore: 8.5 }), []);
+  assert.deepEqual(determineAwards({ ...eliteConditions, audienceScore: 8.6 }), ["年度最佳影片", "最佳导演", "最佳表演", "最佳银幕搭档", "观众选择奖"]);
+  assert.deepEqual(determineAwards({ quality: 70, directorScore: 80, acting: 70, chemistry: 70, audienceScore: 8.6 }), ["观众选择奖"]);
+});
+
+test("former self-trained talent needs a B-level combined score to enter the mature market", () => {
+  assert.equal(isMatureMarketEligible({ acting: 74, appeal: 75 }), false);
+  assert.equal(isMatureMarketEligible({ acting: 75, appeal: 75 }), true);
+});
+
 test("annual scouting favors ordinary rookies while the yearly refresh guarantees one rare card", () => {
   const naturalCounts = { ordinary: 0, gold: 0, red: 0 };
   const naturalYears = { none: 0, gold: 0, red: 0 };
@@ -172,7 +193,14 @@ test("genre training remains unique and rookie fees catch established stars afte
   assert.ok(firstHit >= 600);
   assert.ok(secondHit > firstHit);
   assert.ok(thirdHit > 1500);
-  assert.ok(rookiePerformanceFee(700, "S", 3, .5) < 700);
+  const firstFlop = rookiePerformanceFee(100, "B", 1, .5);
+  const fifthCredit = rookiePerformanceFee(firstFlop, "B", 5, .5);
+  assert.ok(firstFlop > 100);
+  assert.ok(fifthCredit > firstFlop);
+  const firstSalary = rookieCareerSalary(90, firstHit, 1);
+  const thirdSalary = rookieCareerSalary(firstSalary, thirdHit, 3);
+  assert.ok(firstSalary > 90);
+  assert.ok(thirdSalary > firstSalary);
   const contract = { origin: "rookie", signingFee: 100, annualSalary: 100 };
   const renewal = talentRenewalQuote({ acting: 98, appeal: 98, fee: thirdHit }, contract);
   assert.ok(renewal.renewalFee > 2500);
@@ -197,6 +225,18 @@ test("release slots generate stable competitors and competition reduces gross", 
   const clearSlot = buildReleaseModel({ ...releaseBase, audienceScore: 8.5, wordOfMouth: 86, openingPower: 84 });
   const crowdedSlot = buildReleaseModel({ ...releaseBase, audienceScore: 8.5, wordOfMouth: 86, openingPower: 84, competitionPressure: pressure });
   assert.ok(crowdedSlot.gross < clearSlot.gross);
+});
+
+test("positive schedule risk reduces release efficiency while controlled risk grants no bonus", () => {
+  const neutral = buildReleaseModel({ ...releaseBase, audienceScore: 8.5, wordOfMouth: 86, openingPower: 84, scheduleRisk: 0 });
+  const delayed = buildReleaseModel({ ...releaseBase, audienceScore: 8.5, wordOfMouth: 86, openingPower: 84, scheduleRisk: 4 });
+  const controlled = buildReleaseModel({ ...releaseBase, audienceScore: 8.5, wordOfMouth: 86, openingPower: 84, scheduleRisk: -4 });
+  assert.equal(scheduleRiskMultiplier(4), .9);
+  assert.equal(scheduleRiskMultiplier(-4), 1);
+  assert.ok(delayed.weekGross < neutral.weekGross);
+  assert.ok(delayed.gross < neutral.gross);
+  assert.equal(controlled.openingDay, neutral.openingDay);
+  assert.equal(controlled.gross, neutral.gross);
 });
 
 test("annual talent market, public opinion, ageing and retirement are deterministic", () => {
@@ -304,9 +344,16 @@ test("every movie genre has 18 new questions and rotates a six-question paper", 
   assert.equal(new Set(allQuestions.map((question) => question.id)).size, 144);
   assert.ok(allQuestions.every((question) => question.options.length === 3));
   assert.notDeepEqual(getScriptQuestions("犯罪悬疑", 2).map((question) => question.id), getScriptQuestions("犯罪悬疑", 3).map((question) => question.id));
+  for (const genre of Object.keys(bank.genres)) {
+    const firstSix = Array.from({ length: 6 }, (_, index) => getScriptQuestions(genre, index + 1)).flat();
+    const firstTwelvePapers = Array.from({ length: 12 }, (_, index) => getScriptQuestions(genre, index + 1).map((question) => question.id).sort().join("|"));
+    assert.equal(new Set(firstSix.filter((question) => !question.id.startsWith("common-")).map((question) => question.id)).size, 23);
+    assert.equal(new Set(firstSix.filter((question) => question.id.startsWith("common-")).map((question) => question.id)).size, 6);
+    assert.equal(new Set(firstTwelvePapers).size, 12);
+  }
 });
 
-test("published script scoring formula matches the evaluator", () => {
+test("script evaluation publishes dimensions, tags and the rebalanced final score", () => {
   const questions = getScriptQuestions("科幻冒险", 4);
   const answers = Object.fromEntries(questions.map((question) => [question.id, question.options[0].id]));
   const report = evaluateScript(answers, questions.map((question) => question.id), "科幻冒险", 8);
@@ -315,5 +362,149 @@ test("published script scoring formula matches the evaluator", () => {
     assert.equal(report[key], expected);
   }
   assert.equal(report.levelBonus, 3);
-  assert.equal(report.score, Math.min(98, report.baseScore + 3));
+  assert.equal(report.score, Math.min(94, report.baseScore + 3));
+  assert.ok(report.tags.length > 0);
+  assert.ok(report.risks.length > 0);
+});
+
+test("annual goal offers are deterministic, varied and evaluate their real conditions", () => {
+  const market = [
+    { name: "悬疑", heat: 88 }, { name: "爱情", heat: 72 }, { name: "历史", heat: 55 },
+  ];
+  assert.deepEqual(generateAnnualGoals(4, market), generateAnnualGoals(4, market));
+  const allKinds = new Set(Array.from({ length: 5 }, (_, index) => generateAnnualGoals(index + 1, market)).flat().map((goal) => goal.kind));
+  assert.equal(allKinds.size, 5);
+  const goals = generateAnnualGoals(1, market);
+  assert.equal(goals.length, 3);
+  const commercial = goals.find((goal) => goal.kind === "boxOffice");
+  assert.ok(commercial);
+  const completed = evaluateAnnualGoal(commercial, { gross: commercial.target + 1, awards: 0, totalCost: 12000, genre: "悬疑", castIds: [1, 2], audienceScore: 8, breakEvenGross: 40000 });
+  assert.equal(completed.completed, true);
+  assert.ok(completed.reward.xp > 0);
+});
+
+test("level-one script combinations match the intended grade distribution", () => {
+  const genres = ["犯罪悬疑", "都市爱情", "科幻冒险", "动作战争", "合家欢喜剧", "历史传记"];
+  const counts = { D: 0, C: 0, B: 0, A: 0, S: 0 };
+  let total = 0;
+  let minimum = 100;
+  let maximum = 0;
+  for (const genre of genres) {
+    for (let year = 1; year <= 12; year += 1) {
+      const questions = getScriptQuestions(genre, year);
+      for (let combination = 0; combination < 729; combination += 1) {
+        let cursor = combination;
+        const answers = {};
+        for (const question of questions) {
+          answers[question.id] = question.options[cursor % 3].id;
+          cursor = Math.floor(cursor / 3);
+        }
+        const report = evaluateScript(answers, questions.map((question) => question.id), genre, 1);
+        counts[report.grade] += 1;
+        minimum = Math.min(minimum, report.score);
+        maximum = Math.max(maximum, report.score);
+        total += 1;
+      }
+    }
+  }
+  const ratio = (grades) => grades.reduce((sum, grade) => sum + counts[grade], 0) / total;
+  assert.ok(ratio(["C", "D"]) >= .18 && ratio(["C", "D"]) <= .25);
+  assert.ok(ratio(["B"]) >= .45 && ratio(["B"]) <= .55);
+  assert.ok(ratio(["A"]) >= .2 && ratio(["A"]) <= .3);
+  assert.ok(ratio(["S"]) >= .035 && ratio(["S"]) <= .07);
+  assert.equal(minimum, 55);
+  assert.equal(maximum, 94);
+});
+
+test("script rewrite is a one-use improvement with a visible cost and tradeoff", () => {
+  const questions = getScriptQuestions("犯罪悬疑", 2);
+  const answers = Object.fromEntries(questions.map((question) => [question.id, question.options[1].id]));
+  const report = evaluateScript(answers, questions.map((question) => question.id), "犯罪悬疑", 1);
+  const rewrite = rewriteScript(report, "structure");
+  assert.ok(rewrite.cost > 0);
+  assert.ok(rewrite.report.story > report.story);
+  assert.ok(rewrite.report.market < report.market);
+  assert.equal(rewrite.report.rewritten, true);
+  assert.throws(() => rewriteScript(rewrite.report, "commercial"), /只能进行一次/);
+});
+
+test("production contexts produce broad chain coverage without breaking tradeoff bands", () => {
+  const genres = ["犯罪悬疑", "都市爱情", "科幻冒险", "动作战争", "合家欢喜剧", "历史传记"];
+  const budgets = ["小成本", "标准制作", "大片级"];
+  const chains = genres.flatMap((genre) => budgets.flatMap((budget) => Array.from({ length: 12 }, (_, yearIndex) => generateProductionChain([3, 8], yearIndex + 1, { genre, budget }))));
+  assert.equal(new Set(chains.flat().map((event) => event.title)).size, 12);
+  for (const genre of genres) {
+    const annualSignatures = Array.from({ length: 12 }, (_, yearIndex) => generateProductionChain([3, 8], yearIndex + 1, { genre, budget: "标准制作" }).map((event) => event.title).join("|"));
+    assert.ok(new Set(annualSignatures).size >= 8);
+    assert.equal(new Set(annualSignatures.slice(0, 4)).size, 4);
+  }
+  const combinations = Array.from({ length: 8 }, (_, mask) => [0, 1, 2].map((index) => mask & (1 << index) ? "bold" : "safe"));
+  for (const chain of chains) {
+    assert.equal(chain.length, 3);
+    const outcomes = combinations.map((choices) => ({ choices, ...resolveProductionChain(chain, choices) }));
+    const allSafe = outcomes.find((outcome) => outcome.choices.every((choice) => choice === "safe"));
+    const allBold = outcomes.find((outcome) => outcome.choices.every((choice) => choice === "bold"));
+    assert.ok(allSafe.quality >= 2 && allSafe.quality <= 3);
+    assert.equal(allSafe.cost, 0);
+    assert.ok(allBold.quality > allSafe.quality);
+    assert.ok(allBold.cost > 0 && allBold.scheduleRisk > 0);
+    outcomes.filter((outcome) => outcome !== allSafe && outcome !== allBold).forEach((outcome) => assert.ok(outcome.quality >= 3 && outcome.quality <= 7));
+    for (const first of outcomes) {
+      for (const second of outcomes) {
+        if (first === second) continue;
+        const dominates = first.quality >= second.quality && first.market >= second.market && first.cost <= second.cost && first.scheduleRisk <= second.scheduleRisk
+          && (first.quality > second.quality || first.market > second.market || first.cost < second.cost || first.scheduleRisk < second.scheduleRisk);
+        assert.equal(dominates, false, `${first.choices.join("/")} must not strictly dominate ${second.choices.join("/")}`);
+      }
+    }
+  }
+});
+
+test("library income is capped, includes the just-finished film, and offsets but does not erase later operating pressure", () => {
+  const empty = calculateLibraryIncome([]);
+  const weak = calculateLibraryIncome([{ title: "小片", gross: 1000, awards: 0 }]);
+  const steadyLibrary = [
+    { title: "甲", gross: 70000, awards: 0 },
+    { title: "乙", gross: 70000, awards: 0 },
+    { title: "丙", gross: 70000, awards: 0 },
+  ];
+  const steadyIncome = calculateLibraryIncome(steadyLibrary);
+  const topIncome = calculateLibraryIncome([
+    { title: "传奇一", gross: 200000, awards: 5 },
+    { title: "传奇二", gross: 180000, awards: 4 },
+    { title: "传奇三", gross: 160000, awards: 3 },
+    { title: "不会计入", gross: 999999, awards: 9 },
+  ]);
+  assert.equal(empty, 0);
+  assert.equal(calculateLibraryIncome([{ title: "未发行", gross: -500, awards: 0 }]), 0);
+  assert.ok(weak > 0 && weak < 20);
+  assert.equal(steadyIncome, 1260);
+  assert.equal(topIncome, 1800);
+  for (let year = 5; year <= 10; year += 1) {
+    const operatingCost = yearlyOperatingCost(3, 0, Math.min(1.32, 1 + (year - 1) * .025));
+    assert.ok(steadyIncome >= operatingCost * .5);
+    assert.ok(steadyIncome < operatingCost);
+  }
+  const cashWithoutLibrary = settleAnnualCompanyCash(10000, 500, 0, 600, 2200);
+  const cashWithLibrary = settleAnnualCompanyCash(10000, 500, steadyIncome, 600, 2200);
+  assert.equal(cashWithLibrary - cashWithoutLibrary, steadyIncome);
+  const priorHistory = steadyLibrary.slice(0, 2);
+  const justFinished = { title: "新片", gross: 80000, awards: 1 };
+  assert.equal(calculateLibraryIncome([justFinished, ...priorHistory]), Math.round(80000 * .006 + 120) + 420 * 2);
+});
+
+test("award judging compares rivals, explains misses and caps wins at three", () => {
+  const rivals = [{ title: "强敌甲", strength: 93 }, { title: "强敌乙", strength: 90 }];
+  const weak = judgeAwards({ year: 1, quality: 70, directorSkill: 75, fit: 0, acting: 78, chemistry: 70, audienceScore: 7.1 }, rivals);
+  const strongInput = { year: 4, quality: 90, directorSkill: 90, fit: 18, acting: 94, chemistry: 90, audienceScore: 8.9 };
+  const eliteInput = { year: 1, quality: 99, directorSkill: 99, fit: 24, acting: 99, chemistry: 99, audienceScore: 9.9 };
+  const strong = judgeAwards(strongInput, rivals);
+  const elite = judgeAwards(eliteInput, rivals);
+  assert.equal(weak.filter((award) => award.won).length, 0);
+  assert.ok(weak.every((award) => award.note.includes("《")));
+  assert.equal(awardWinCap(strongInput), 2);
+  assert.equal(awardWinCap(eliteInput), 3);
+  assert.ok(strong.filter((award) => award.won).length <= awardWinCap(strongInput));
+  assert.ok(elite.filter((award) => award.won).length <= awardWinCap(eliteInput));
+  assert.ok(elite.some((award) => award.nominated));
 });

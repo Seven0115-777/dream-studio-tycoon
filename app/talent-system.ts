@@ -21,6 +21,7 @@ export type AgencyActor = {
   tag: string;
   profile?: AgencyProfile;
   potential?: number;
+  careerStartYear?: number;
 };
 
 export type TalentContract = {
@@ -49,9 +50,13 @@ export type AgencyLedger = {
   salaryCost: number;
   expiredNames: string[];
   operatingCost?: number;
+  libraryIncome?: number;
   retiredNames?: string[];
+  withdrawnNames?: string[];
   talentNews?: TalentNews[];
   breakoutNotes?: string[];
+  appealChanges?: string[];
+  salaryChanges?: string[];
   tierChanges?: string[];
 };
 
@@ -165,6 +170,10 @@ export function actorTier(acting: number, appeal: number): ActorTier {
   return total >= 195 ? "SS" : total >= 182 ? "S" : total >= 175 ? "A" : "B";
 }
 
+export function isMatureMarketEligible(actor: Pick<AgencyActor, "acting" | "appeal">) {
+  return actor.acting + actor.appeal >= 150;
+}
+
 export function tierRank(tier: ActorTier) {
   return tier === "SS" ? 4 : tier === "S" ? 3 : tier === "A" ? 2 : 1;
 }
@@ -198,14 +207,22 @@ export function uniqueGenres(genres: string[]) {
 }
 
 export function rookiePerformanceFee(currentFee: number, tier: ActorTier, filmCredits: number, performanceRatio: number) {
-  if (performanceRatio < .7) return Math.max(80, Math.round(currentFee * .9));
-  if (performanceRatio < 1) return Math.max(80, Math.round(currentFee * 1.02));
+  const credits = Math.max(1, filmCredits);
+  const careerFloorRate = performanceRatio < .7 ? 1.04 : performanceRatio < 1 ? 1.07 : 1.1;
+  const careerFloor = currentFee * (careerFloorRate + Math.min(.12, credits * .015));
+  if (performanceRatio < 1) return Math.min(4000, Math.max(80, Math.round(careerFloor)));
   const tierBenchmark = tier === "SS" ? 1550 : tier === "S" ? 1100 : tier === "A" ? 720 : 260;
   const hitMultiplier = performanceRatio >= 3 ? 1.25 : performanceRatio >= 1.8 ? 1.12 : 1;
-  const experienceWeight = Math.min(.75, .22 + Math.max(1, filmCredits) * .11);
-  const targetFee = tierBenchmark * hitMultiplier;
+  const experienceWeight = Math.min(.82, .22 + credits * .11);
+  const careerBenchmark = tierBenchmark * (1 + Math.min(.5, Math.max(0, credits - 1) * .08));
+  const targetFee = careerBenchmark * hitMultiplier;
   const performanceFloor = currentFee * (performanceRatio >= 3 ? 1.3 : performanceRatio >= 1.8 ? 1.22 : 1.1);
-  return Math.min(4000, Math.max(Math.round(performanceFloor), Math.round(currentFee + (targetFee - currentFee) * experienceWeight)));
+  return Math.min(4000, Math.max(Math.round(careerFloor), Math.round(performanceFloor), Math.round(currentFee + (targetFee - currentFee) * experienceWeight)));
+}
+
+export function rookieCareerSalary(currentSalary: number, marketFee: number, filmCredits: number) {
+  const careerSalaryRate = .85 + Math.min(.65, Math.max(0, filmCredits) * .12);
+  return Math.max(currentSalary, Math.round(marketFee * careerSalaryRate));
 }
 
 export function talentRenewalQuote(actor: AgencyActor, contract: TalentContract) {

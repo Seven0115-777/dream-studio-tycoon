@@ -15,6 +15,7 @@ export type ReleaseModelInput = {
   competitionPressure: number;
   totalCost: number;
   investmentAmount?: number;
+  scheduleRisk?: number;
 };
 
 export type ReleaseModel = {
@@ -31,6 +32,7 @@ export type ReleaseModel = {
   profit: number;
   breakEvenGross: number;
   retention: number;
+  scheduleEfficiency: number;
 };
 
 export type ContentModelInput = {
@@ -56,14 +58,33 @@ export type ContentModel = {
 const clamp = (minimum: number, maximum: number, value: number) => Math.max(minimum, Math.min(maximum, value));
 const STUDIO_SHARE = .34;
 
+export function boxOfficeSettlementTarget(weekDays: number[], revealedDays: number, studioRevenue: number, investorShare = 0, successBonus = 0) {
+  const visibleDays = Math.max(0, Math.min(7, Math.floor(revealedDays)));
+  if (visibleDays === 0) return 0;
+  if (visibleDays === 7) return Math.max(0, Math.round(studioRevenue - investorShare - successBonus));
+  return Math.round(weekDays.slice(0, visibleDays).reduce((sum, value) => sum + value, 0) * STUDIO_SHARE);
+}
+
 export function projectPaymentDelta(targetCost: number, paidCost: number) {
   return Math.round(targetCost) - Math.round(paidCost);
+}
+
+export function scheduleRiskMultiplier(scheduleRisk: number) {
+  return Number((1 - Math.min(.1, Math.max(0, scheduleRisk) * .025)).toFixed(3));
 }
 
 export function annualInvestmentAmount(year: number) {
   const productionYear = Math.max(1, Math.floor(year));
   if (productionYear === 1) return 0;
   return 5000 + Math.floor((productionYear - 2) / 2) * 2000;
+}
+
+export function yearlyOperatingCost(level: number, rosterCount: number, industryIndex: number) {
+  return Math.round((700 + Math.max(1, level) * 350 + Math.max(0, rosterCount) * 180) * Math.max(1, industryIndex));
+}
+
+export function settleAnnualCompanyCash(currentCash: number, externalIncome: number, libraryIncome: number, salaryCost: number, operatingCost: number) {
+  return Math.max(0, currentCash + externalIncome + libraryIncome - salaryCost - operatingCost);
 }
 
 export function investorRevenueShare(studioRevenue: number, investmentAmount: number) {
@@ -82,6 +103,17 @@ export function calculateCareerRewards(quality: number, audienceScore: number, r
   const audienceReputation = audienceScore >= 9 ? 10 : audienceScore >= 8.5 ? 7 : audienceScore >= 8 ? 4 : audienceScore >= 7.5 ? 1 : audienceScore >= 7 ? -4 : audienceScore >= 6.5 ? -8 : -12;
   const reputationGain = Math.round(clamp(-25, 35, roiReputation + audienceReputation + awardCount * 5));
   return { xpGain, reputationGain };
+}
+
+export function determineAwards({ quality, directorScore, acting, chemistry, audienceScore }: { quality: number; directorScore: number; acting: number; chemistry: number; audienceScore: number }) {
+  if (audienceScore < 8.6) return [];
+  const awards: string[] = [];
+  if (quality >= 88) awards.push("年度最佳影片");
+  if (directorScore >= 101) awards.push("最佳导演");
+  if (acting >= 88) awards.push("最佳表演");
+  if (chemistry >= 90) awards.push("最佳银幕搭档");
+  awards.push("观众选择奖");
+  return awards;
 }
 
 export function buildContentModel(input: ContentModelInput): ContentModel {
@@ -111,7 +143,8 @@ export function buildReleaseModel(input: ReleaseModelInput): ReleaseModel {
   const organicBoost = input.promoPower < 55 ? Math.max(0, input.wordOfMouth - 82) * .0045 : 0;
   const openingBase = (input.appeal * 18 + input.genreHeat * 8 + Math.pow(input.promoCost, .75) * 5 + Math.pow(input.budgetCost, .7)) * 1.3;
   const openingPowerFactor = .78 + input.openingPower * .0024;
-  const openingDay = Math.max(300, Math.round(openingBase * input.slotBoost * input.studioReach * input.genreSlotBonus * input.budgetCapacity * openingPowerFactor * (1 + input.eventMarket / 100) * (1 - input.competitionPressure * .7)));
+  const scheduleEfficiency = scheduleRiskMultiplier(input.scheduleRisk ?? 0);
+  const openingDay = Math.max(300, Math.round(openingBase * input.slotBoost * input.studioReach * input.genreSlotBonus * input.budgetCapacity * openingPowerFactor * (1 + input.eventMarket / 100) * (1 - input.competitionPressure * .7) * scheduleEfficiency));
 
   const weekScores = buildAudienceScoreCurve(input.audienceScore, input.openingPower, input.wordOfMouth);
   const weekDays = [openingDay];
@@ -155,5 +188,5 @@ export function buildReleaseModel(input: ReleaseModelInput): ReleaseModel {
   const proportionalBreakEven = Math.ceil(input.totalCost / (STUDIO_SHARE * .9));
   const capThresholdGross = investmentCap > 0 ? investmentCap / (STUDIO_SHARE * .1) : 0;
   const breakEvenGross = investmentCap <= 0 ? Math.ceil(input.totalCost / STUDIO_SHARE) : proportionalBreakEven <= capThresholdGross ? proportionalBreakEven : Math.ceil((input.totalCost + investmentCap) / STUDIO_SHARE);
-  return { openingDay, weekDays, weekScores, monthDays, weekGross, tailGross, gross, studioRevenue, investorShare, successBonus, profit, breakEvenGross, retention: Math.round(retention * 100) };
+  return { openingDay, weekDays, weekScores, monthDays, weekGross, tailGross, gross, studioRevenue, investorShare, successBonus, profit, breakEvenGross, retention: Math.round(retention * 100), scheduleEfficiency };
 }

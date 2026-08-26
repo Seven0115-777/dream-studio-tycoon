@@ -1,7 +1,9 @@
 export type ScriptScores = { story: number; character: number; market: number; originality: number };
-export type ScriptOption = { id: string; label: string; description: string; scores: ScriptScores };
+export type ScriptOption = { id: string; label: string; description: string; scores: ScriptScores; profile: string; upside: string; tradeoff: string };
 export type ScriptQuestion = { id: string; title: string; prompt: string; options: ScriptOption[] };
-export type ScriptReport = ScriptScores & { baseScore: number; levelBonus: number; score: number; grade: string; verdict: string };
+export type ScriptReport = ScriptScores & { baseScore: number; levelBonus: number; score: number; grade: string; verdict: string; tags: string[]; risks: string[]; rewritten?: boolean; rewriteDirection?: RewriteDirection };
+export type RewriteDirection = "structure" | "character" | "commercial";
+export type RewriteResult = { report: ScriptReport; cost: number; marketHeatDelta: number; timeCost: string };
 
 const profiles = {
   story: { story: 20, character: 12, market: 14, originality: 16 },
@@ -16,7 +18,18 @@ const profiles = {
 } satisfies Record<string, ScriptScores>;
 
 type Profile = keyof typeof profiles;
-const o = (id: string, label: string, description: string, profile: Profile): ScriptOption => ({ id, label, description, scores: profiles[profile] });
+const profileFeedback: Record<Profile, { upside: string; tradeoff: string; craft: number }> = {
+  story: { upside: "因果严密", tradeoff: "人物温度中等", craft: 1 },
+  character: { upside: "角色驱动", tradeoff: "商业节奏偏慢", craft: 1 },
+  market: { upside: "大众入口", tradeoff: "原创辨识度偏低", craft: 1 },
+  original: { upside: "新鲜表达", tradeoff: "理解门槛提高", craft: -1 },
+  balanced: { upside: "完成度均衡", tradeoff: "缺少单项爆点", craft: 4 },
+  emotional: { upside: "情绪后劲", tradeoff: "结构效率下降", craft: 0 },
+  spectacle: { upside: "视听奇观", tradeoff: "人物空间受压", craft: -3 },
+  risky: { upside: "争议话题", tradeoff: "受众明显分化", craft: -5 },
+  safe: { upside: "接受度稳定", tradeoff: "创作锐度不足", craft: -4 },
+};
+const o = (id: string, label: string, description: string, profile: Profile): ScriptOption => ({ id, label, description, scores: profiles[profile], profile, upside: profileFeedback[profile].upside, tradeoff: profileFeedback[profile].tradeoff });
 const q = (id: string, title: string, prompt: string, options: ScriptOption[]): ScriptQuestion => ({ id, title, prompt, options });
 
 const commonQuestions: ScriptQuestion[] = [
@@ -127,13 +140,17 @@ export function getScriptQuestionBank() {
 }
 
 const hash = (value: string) => [...value].reduce((total, character) => (total * 31 + character.charCodeAt(0)) >>> 0, 2166136261);
-const rotatePick = <T,>(items: T[], count: number, seed: number) => Array.from({ length: count }, (_, index) => items[(seed + index) % items.length]);
+const deterministicOrder = <T extends { id: string }>(items: T[], seed: string) => [...items].sort((first, second) => hash(`${seed}:${first.id}`) - hash(`${seed}:${second.id}`) || first.id.localeCompare(second.id));
 
 export function getScriptQuestions(genre: string, year: number): ScriptQuestion[] {
-  const seed = hash(`${genre}:${year}`);
-  const common = rotatePick(commonQuestions, 2, seed % commonQuestions.length);
   const specificPool = genreQuestions[genre] ?? genreQuestions["犯罪悬疑"];
-  const specific = rotatePick(specificPool, 4, Math.floor(seed / 7) % specificPool.length);
+  const specificOrder = deterministicOrder(specificPool, `${genre}:specific-order`);
+  const commonOrder = deterministicOrder(commonQuestions, `${genre}:common-order`);
+  const safeYear = Math.max(1, Math.floor(year));
+  const specificStart = ((safeYear - 1) * 4) % specificOrder.length;
+  const commonStart = ((safeYear - 1) * 2) % commonOrder.length;
+  const specific = Array.from({ length: 4 }, (_, index) => specificOrder[(specificStart + index) % specificOrder.length]);
+  const common = Array.from({ length: 2 }, (_, index) => commonOrder[(commonStart + index) % commonOrder.length]);
   return [specific[0], common[0], specific[1], specific[2], common[1], specific[3]];
 }
 
@@ -153,8 +170,48 @@ export function evaluateScript(answers: Record<string, string>, questionIds: str
   selected.forEach((option) => (Object.keys(totals) as (keyof ScriptScores)[]).forEach((key) => { totals[key] += option.scores[key]; }));
   const dimensions = (Object.keys(totals) as (keyof ScriptScores)[]).reduce((report, key) => ({ ...report, [key]: Math.round(totals[key] / selected.length * 5) }), {} as ScriptScores);
   const genreBonus = genre === "合家欢喜剧" && dimensions.market >= 86 ? 2 : genre === "历史传记" && dimensions.character >= 86 ? 2 : genre === "犯罪悬疑" && dimensions.story >= 86 ? 2 : genre === "科幻冒险" && dimensions.originality >= 86 ? 2 : genre === "都市爱情" && dimensions.character >= 86 ? 2 : genre === "动作战争" && dimensions.market >= 86 ? 2 : 0;
-  const baseScore = Math.min(96, Math.round(dimensions.story * .3 + dimensions.character * .27 + dimensions.market * .25 + dimensions.originality * .18 + genreBonus + 7));
+  const profileCounts = selected.reduce<Record<string, number>>((counts, option) => ({ ...counts, [option.profile]: (counts[option.profile] ?? 0) + 1 }), {});
+  const dominantCount = Math.max(...Object.values(profileCounts));
+  const craftAdjustment = selected.reduce((sum, option) => sum + profileFeedback[option.profile as Profile].craft, 0) * .8;
+  const coherenceBonus = dominantCount >= 4 ? dominantCount - 3 : 0;
+  const balanceBonus = Math.min(...Object.values(dimensions)) >= 72 ? 1 : Math.min(...Object.values(dimensions)) < 55 ? -3 : 0;
+  const baseScore = Math.max(55, Math.min(94, Math.round(dimensions.story * .3 + dimensions.character * .27 + dimensions.market * .25 + dimensions.originality * .18 + genreBonus + 2 + craftAdjustment + coherenceBonus + balanceBonus)));
   const levelBonus = levelWritingBonus(studioLevel);
-  const score = Math.min(98, baseScore + levelBonus);
-  return { ...dimensions, baseScore, levelBonus, score, grade: score >= 90 ? "S" : score >= 82 ? "A" : score >= 72 ? "B" : score >= 62 ? "C" : "D", verdict: score >= 90 ? "年度级潜力剧本" : score >= 82 ? "具备头部项目潜质" : score >= 72 ? "结构完整，可以推进" : score >= 62 ? "存在亮点，但需要明星托举" : "创作方向仍需打磨" };
+  const score = Math.min(94, baseScore + levelBonus);
+  const grade = score >= 90 ? "S" : score >= 82 ? "A" : score >= 72 ? "B" : score >= 62 ? "C" : "D";
+  return { ...dimensions, baseScore, levelBonus, score, grade, verdict: score >= 90 ? "年度级潜力剧本" : score >= 82 ? "具备头部项目潜质" : score >= 72 ? "结构完整，可以推进" : score >= 62 ? "存在亮点，但需要明星托举" : "创作方向仍需打磨", tags: [...new Set(selected.map((option) => option.upside))].slice(0, 3), risks: [...new Set(selected.map((option) => option.tradeoff))].slice(0, 3) };
+}
+
+function gradeFor(score: number) {
+  return score >= 90 ? "S" : score >= 82 ? "A" : score >= 72 ? "B" : score >= 62 ? "C" : "D";
+}
+
+export function rewriteScript(report: ScriptReport, direction: RewriteDirection, alreadyUsed = false): RewriteResult {
+  if (alreadyUsed || report.rewritten) throw new Error("每部影片只能进行一次改稿");
+  const plans = {
+    structure: { story: 7, character: 0, market: -3, originality: 0, score: 4, cost: 900, marketHeatDelta: -2, timeCost: "追加两周", label: "结构重写" },
+    character: { story: 0, character: 7, market: -2, originality: 0, score: 3, cost: 700, marketHeatDelta: -1, timeCost: "追加十天", label: "人物精修" },
+    commercial: { story: 0, character: -3, market: 8, originality: -4, score: 2, cost: 600, marketHeatDelta: 3, timeCost: "追加一周", label: "商业化改稿" },
+  } as const;
+  const plan = plans[direction];
+  const score = Math.min(94, report.score + plan.score);
+  return {
+    report: {
+      ...report,
+      story: Math.max(0, Math.min(100, report.story + plan.story)),
+      character: Math.max(0, Math.min(100, report.character + plan.character)),
+      market: Math.max(0, Math.min(100, report.market + plan.market)),
+      originality: Math.max(0, Math.min(100, report.originality + plan.originality)),
+      score,
+      grade: gradeFor(score),
+      verdict: score >= 90 ? "年度级潜力剧本" : score >= 82 ? "具备头部项目潜质" : score >= 72 ? "结构完整，可以推进" : score >= 62 ? "存在亮点，但需要明星托举" : "创作方向仍需打磨",
+      tags: [...new Set([...(report.tags ?? []), plan.label])].slice(0, 4),
+      risks: [...new Set([...(report.risks ?? []), `${plan.timeCost} · 市场热度 ${plan.marketHeatDelta >= 0 ? "+" : ""}${plan.marketHeatDelta}`])].slice(0, 4),
+      rewritten: true,
+      rewriteDirection: direction,
+    },
+    cost: plan.cost,
+    marketHeatDelta: plan.marketHeatDelta,
+    timeCost: plan.timeCost,
+  };
 }
