@@ -153,7 +153,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
 .path-final-confirm > b { color: #fff; font-size: 13px; }
 .path-final-confirm > p { margin: 5px 0 11px; color: #9fb5b8; font-size: 9px; line-height: 1.5; }
 
-.rival-plan-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 10px; }
+.rival-plan-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-bottom: 10px; }
 .rival-plan-grid article { min-width: 0; padding: 10px; border: 1px solid rgba(91,181,197,.2); border-top: 3px solid; border-radius: 4px; background: rgba(8,25,33,.88); color: #dcebed; }
 .rival-plan-grid span, .rival-plan-grid b, .rival-plan-grid p, .rival-plan-grid small { display: block; }
 .rival-plan-grid span { color: #7f9fa5; font-size: 8px; }
@@ -172,6 +172,58 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
 .season-standing > div > small, .season-result-card > div > small { color: #89a6ab; font-size: 8px; }
 .season-standing > div > strong, .season-result-card > div > strong { color: #ffd05f; font-size: 11px; text-align: right; }
 .season-standing footer { padding-top: 9px; color: #e6c767; font-size: 9px; text-align: right; }
+
+.honor-overview { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 18px; }
+.honor-overview > div { min-width: 0; padding: 11px; border: 1px solid rgba(231,183,104,.25); border-top: 3px solid #e7b768; border-radius: 5px; background: rgba(9,25,32,.92); }
+.honor-overview span, .honor-overview b, .honor-overview small { display: block; }
+.honor-overview span { color: #7ccbd4; font-size: 8px; font-weight: 900; }
+.honor-overview b { margin: 4px 0; color: #ffd26e; font-size: 20px; }
+.honor-overview small { color: #9ab4b8; font-size: 8px; line-height: 1.4; }
+.honor-discovery-grid, .honor-season-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-bottom: 19px; }
+.honor-discovery-grid > section, .honor-season-grid > section, .honor-ip-list > article { padding: 11px; border: 1px solid rgba(91,181,197,.23); border-radius: 5px; background: rgba(7,23,31,.92); }
+.honor-discovery-grid header, .honor-season-grid header, .honor-ip-list > article > header { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(91,181,197,.14); }
+.honor-discovery-grid header span, .honor-season-grid header span, .honor-ip-list header span { color: #71cad5; font-size: 7px; font-weight: 900; letter-spacing: .08em; }
+.honor-discovery-grid header b, .honor-season-grid header b, .honor-ip-list header b { grid-column: 1; color: #fff; font-size: 11px; }
+.honor-discovery-grid header strong, .honor-ip-list header strong { grid-column: 2; grid-row: 1 / 3; align-self: center; color: #ffd26e; font-size: 13px; }
+.honor-discovery-grid section > div { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.honor-discovery-grid article { min-width: 0; padding: 8px; background: rgba(255,255,255,.04); border-left: 2px solid #ef6848; }
+.honor-discovery-grid article small, .honor-discovery-grid article b, .honor-discovery-grid article p { display: block; }
+.honor-discovery-grid article small { color: #74c7d2; font-size: 7px; }
+.honor-discovery-grid article b { margin: 3px 0; color: #fff; font-size: 10px; }
+.honor-discovery-grid article p { margin: 0; color: #9eb8bc; font-size: 8px; }
+.honor-empty { margin: 8px 0 0; padding: 10px; border: 1px dashed rgba(91,181,197,.22); color: #91adb2; font-size: 9px; line-height: 1.55; }
+.honor-film-records { display: grid; grid-template-columns: .82fr 1.18fr; gap: 9px; margin-bottom: 19px; }
+.honor-top-film { min-height: 160px; display: flex; flex-direction: column; justify-content: center; padding: 15px; border: 1px solid rgba(239,96,57,.45); border-radius: 5px; background: linear-gradient(145deg, rgba(88,42,31,.86), rgba(8,25,32,.94)); }
+.honor-top-film span { color: #ff9c82; font-size: 8px; font-weight: 900; }
+.honor-top-film b { margin-top: 10px; color: white; font-size: 16px; }
+.honor-top-film strong { margin: 5px 0; color: #ffd05f; font-size: 22px; }
+.honor-top-film p { margin: 0; color: #a9c1c5; font-size: 9px; line-height: 1.5; }
+.honor-genre-records { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.honor-genre-records article { min-width: 0; display: grid; grid-template-columns: 24px minmax(0,1fr) auto; align-items: center; gap: 7px; padding: 8px; border: 1px solid rgba(91,181,197,.16); background: rgba(8,25,33,.88); }
+.honor-genre-records article > span { color: #6ec8d5; font-size: 14px; text-align: center; }
+.honor-genre-records small, .honor-genre-records b { display: block; }
+.honor-genre-records small { color: #789ba1; font-size: 7px; }
+.honor-genre-records b { overflow: hidden; margin-top: 2px; color: white; font-size: 9px; white-space: nowrap; text-overflow: ellipsis; }
+.honor-genre-records strong { color: #ffd05f; font-size: 12px; }
+.honor-acting-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 19px; }
+.honor-acting-list article { display: grid; grid-template-columns: 30px 1fr; align-items: center; gap: 8px; padding: 10px; border: 1px solid rgba(231,183,104,.3); background: rgba(9,26,33,.9); }
+.honor-acting-list article > span { color: #ffd05f; font-size: 18px; text-align: center; }
+.honor-acting-list b { color: white; font-size: 10px; }
+.honor-acting-list p { margin: 3px 0 0; color: #91adb2; font-size: 8px; }
+.honor-ip-list { display: grid; gap: 8px; margin-bottom: 19px; }
+.honor-ip-list > article > div { display: flex; gap: 6px; align-items: stretch; overflow-x: auto; padding-top: 10px; }
+.honor-ip-list > article > div > div { min-width: 130px; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 6px; }
+.honor-ip-list i { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #ef6039; color: white; font-size: 9px; font-style: normal; font-weight: 900; }
+.honor-ip-list div span b, .honor-ip-list div span small { display: block; }
+.honor-ip-list div span b { color: white; font-size: 9px; }
+.honor-ip-list div span small { margin-top: 3px; color: #8faeb3; font-size: 7px; line-height: 1.4; }
+.honor-ip-list em { align-self: center; color: #4f8790; font-size: 12px; font-style: normal; }
+.honor-season-grid section > article { display: grid; grid-template-columns: 28px 1fr; align-items: center; gap: 8px; padding: 8px 2px; border-bottom: 1px solid rgba(91,181,197,.1); }
+.honor-season-grid section > article > span { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 50%; background: rgba(239,96,57,.18); color: #ff8f72; font-size: 9px; font-weight: 900; }
+.honor-season-grid article b, .honor-season-grid article small { display: block; }
+.honor-season-grid article b { color: #fff; font-size: 10px; }
+.honor-season-grid article small { margin-top: 2px; color: #8fabb0; font-size: 8px; }
+.honor-return { width: 100%; min-height: 44px; margin-top: 2px; border: 0; border-radius: 4px; background: #ef6039; color: white; font-size: 11px; font-weight: 900; cursor: pointer; }
 
 .strategy-result-card { margin: 12px 0; padding: 12px; border: 1px solid rgba(255,118,83,.44); border-radius: 5px; background: linear-gradient(135deg, rgba(72,37,31,.82), rgba(8,26,34,.94)); color: #e8f1f2; }
 .strategy-result-card header { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
@@ -979,13 +1031,13 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
 .studio-hub__intro h1 em { display: block; color: #ff784f; font-style: normal; }
 .studio-hub__intro p { max-width: 390px; margin: 0; color: rgba(255,255,255,.72); font-size: 12px; line-height: 1.65; }
 .annual-rhythm-card { width: min(410px, calc(100% - 64px)); position: absolute; z-index: 3; top: 180px; left: 40px; padding: 13px 14px; border: 1px solid rgba(231,183,104,.36); border-left: 4px solid #ef6039; border-radius: 11px; background: rgba(14,17,17,.88); color: #fff; box-shadow: 0 12px 30px rgba(0,0,0,.28); backdrop-filter: blur(14px); }
-.annual-rhythm-card > span, .annual-rhythm-card > b, .annual-rhythm-card > p, .annual-rhythm-card > i { display: block; }
+.annual-rhythm-card > span, .annual-rhythm-card > b, .annual-rhythm-card > p { display: block; }
 .annual-rhythm-card > span { color: #e7b768; font-size: 8px; font-weight: 900; letter-spacing: .12em; }
 .annual-rhythm-card > b { margin: 5px 0 4px; font-size: 14px; line-height: 1.35; }
 .annual-rhythm-card > p { margin: 0; color: rgba(255,255,255,.76); font-size: 9px; line-height: 1.55; }
 .annual-rhythm-card > div { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 9px; }
 .annual-rhythm-card > div small { padding: 6px 7px; border-radius: 7px; background: rgba(255,255,255,.07); color: #f4f1e8; font-size: 8px; line-height: 1.4; }
-.annual-rhythm-card > i { margin-top: 7px; color: #74d0b0; font-size: 8px; font-style: normal; font-weight: 800; }
+.season-rule { margin: 9px 3px 0; color: #9bb5ba; font-size: 8px; line-height: 1.55; }
 .studio-rooms { position: absolute; inset: 0; }
 .studio-room { width: 202px; min-height: 76px; position: absolute; display: grid; grid-template-columns: 1fr auto; align-content: center; gap: 3px 10px; padding: 12px 13px; border: 1px solid rgba(255,255,255,.25); border-radius: 13px; background: rgba(21,21,19,.78); color: white; text-align: left; box-shadow: 0 12px 30px rgba(0,0,0,.28); backdrop-filter: blur(12px); cursor: pointer; transition: transform .18s ease, border-color .18s ease, background .18s ease; }
 .studio-room > span { color: #e7b768; font-size: 7px; font-weight: 900; letter-spacing: .16em; }
@@ -997,6 +1049,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
 .studio-room:disabled > i { background: rgba(255,255,255,.12); color: rgba(255,255,255,.45); }
 .room-current { left: 50%; bottom: 14%; transform: translateX(-50%); }
 .room-agency { left: 6%; top: 55%; }
+.room-honors { left: 50%; top: 55%; transform: translateX(-50%); }
 .room-finance { right: 6%; top: 55%; }
 .studio-hub__status { min-height: 50px; position: absolute; z-index: 2; right: 32px; bottom: 24px; left: 32px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px; padding: 11px 14px; border: 1px solid rgba(255,255,255,.14); border-radius: 13px; background: rgba(17,17,16,.78); backdrop-filter: blur(14px); }
 .studio-hub__status span { display: flex; align-items: center; gap: 7px; color: #70d2a9; font-size: 8px; font-weight: 800; }
@@ -1489,11 +1542,18 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
   .annual-rhythm-card > div { margin-top: 7px; }
   .annual-rhythm-card > div small { padding: 5px 6px; font-size: 7px; }
   .annual-rhythm-card > i { font-size: 7px; }
-  .studio-rooms { position: absolute; right: 12px; bottom: 68px; left: 12px; inset-block-start: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .studio-rooms { position: absolute; right: 12px; bottom: 68px; left: 12px; inset-block-start: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
   .studio-room { width: auto; min-height: 64px; position: static; padding: 9px 10px; }
   .studio-room > b { font-size: 12px; }
   .studio-room > small { font-size: 7px; }
   .room-current { grid-column: 1 / -1; transform: none; }
+  .room-honors { transform: none; }
+  .honor-overview { grid-template-columns: 1fr 1fr; }
+  .honor-discovery-grid, .honor-film-records, .honor-season-grid { grid-template-columns: 1fr; }
+  .honor-discovery-grid section > div, .honor-genre-records { grid-template-columns: 1fr 1fr; }
+  .honor-acting-list { grid-template-columns: 1fr; }
+  .honor-overview span, .honor-overview small, .honor-discovery-grid header span, .honor-discovery-grid article small, .honor-discovery-grid article p, .honor-genre-records small, .honor-acting-list p, .honor-ip-list div span small, .honor-season-grid article small { font-size: 9px; }
+  .honor-discovery-grid header b, .honor-discovery-grid article b, .honor-genre-records b, .honor-acting-list b, .honor-ip-list div span b, .honor-season-grid article b { font-size: 11px; }
   .studio-hub__status { right: 12px; bottom: 12px; left: 12px; grid-template-columns: 1fr auto; gap: 5px 10px; }
   .studio-hub__status small { grid-column: 1 / -1; }
   .room-scene-nav { grid-template-columns: auto 1fr; }

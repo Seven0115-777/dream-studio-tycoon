@@ -80,7 +80,17 @@ export function normalizeFilmHistory(history: FilmHistoryRecord[]) {
 }
 
 export function eligibleIpSources(history: FilmHistoryRecord[]) {
-  return normalizeFilmHistory(history).filter(isIpEligible);
+  const latestBySeries = new Map<string, FilmHistoryRecord>();
+  normalizeFilmHistory(history).forEach((film) => {
+    const seriesKey = film.seriesId ?? film.id ?? film.title;
+    const current = latestBySeries.get(seriesKey);
+    const filmEntry = film.seriesEntry ?? 1;
+    const currentEntry = current?.seriesEntry ?? 1;
+    if (!current || filmEntry > currentEntry || (filmEntry === currentEntry && (film.year ?? 0) > (current.year ?? 0))) {
+      latestBySeries.set(seriesKey, film);
+    }
+  });
+  return [...latestBySeries.values()].filter(isIpEligible).sort((first, second) => (second.year ?? 0) - (first.year ?? 0));
 }
 
 export function findIpSource(history: FilmHistoryRecord[], sourceId: string | null) {

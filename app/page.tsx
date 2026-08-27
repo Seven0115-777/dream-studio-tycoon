@@ -6,12 +6,13 @@ import { calculateCompetitionPressure, generateCompetitors, type CompetitorMovie
 import { annualInvestmentAmount, boxOfficeSettlementTarget, buildContentModel, buildReleaseModel, calculateCareerRewards, projectPaymentDelta, scheduleRiskMultiplier, settleAnnualCompanyCash, studioReachMultiplier, yearlyOperatingCost } from "./economy";
 import { evolveDirectorMarket, evolveGenreMarket, type MarketDirector } from "./market-system";
 import { evaluateScript, getScriptQuestions, rewriteScript, type RewriteDirection, type ScriptReport } from "./script-engine";
-import { deriveScriptBuild, describeBeginnerBuildChange, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, normalizeSequentialScriptProgress, resolveEnsembleCast, resolveEnsembleDownstream, scriptQuestionState, summarizeScriptDownstream, type EnsembleCastId } from "./script-build-system";
-import { addFilmToSeason, buildSeasonStandings, defaultPoliciesForPath, emptySeasonStats, marketEraForYear, policiesForPath, resolveMarketEraEffects, resolveStudioStrategy, rivalGenrePressure, rivalPlansForYear, seasonResultTitle, strategyLevel, studioPathXpGain, studioPaths, summarizeStrategyEffects, upcomingMarketEra, type SeasonArchiveRecord, type SeasonStats, type StudioPathId } from "./studio-strategy-system";
+import { coreStylesByGenre, deriveScriptBuild, describeBeginnerBuildChange, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, normalizeSequentialScriptProgress, resolveEnsembleCast, resolveEnsembleDownstream, scriptConnections, scriptQuestionState, summarizeScriptDownstream, type EnsembleCastId } from "./script-build-system";
+import { addFilmToSeason, buildSeasonStandings, defaultPoliciesForPath, emptySeasonStats, marketEraForYear, policiesForPath, resolveMarketEraEffects, resolveStudioStrategy, rivalGenrePressure, rivalPlansForYear, seasonResultTitle, seasonScoringRule, strategyLevel, studioPathXpGain, studioPaths, summarizeStrategyEffects, upcomingMarketEra, type SeasonArchiveRecord, type SeasonStats, type StudioPathId } from "./studio-strategy-system";
 import { availableReleaseSlotIds, awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, releaseSlotStatus, resolveProductionChain, type AwardNomination, type GoalOutcome, type ProductionChoice, type ReleaseSlotId } from "./game-systems";
 import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, filmRecordId, findIpSource, ipRoutes, isIpEligible, normalizeFilmHistory, resolveIpGenre, resolveIpProjectEffects, routeName, suggestIpTitle, type FilmHistoryRecord, type IpProjectSelection, type IpRouteId } from "./ip-system";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, externalAgencyIncome, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
 import { advanceWordOfMouthChapter, annualRhythmForYear, chapterGoalProgress, emptyWordOfMouthProgress, isWordOfMouthChapterYear, strategySlotCapacityForYear, wordOfMouthGoals, wordOfMouthLegacyEffects, wordOfMouthReleasePlans, type ChapterGoalId, type ChapterReleasePlanId, type WordOfMouthProgress } from "./progression-system";
+import { emptyHonorLedger, normalizeHonorLedger, recordActingHonor, recordFilmHonor, recordSeasonHonor, type HonorLedger } from "./honor-system";
 
 type Genre = { name: string; icon: string; heat: number; color: string; heatChange?: number; marketNote?: string };
 type Director = MarketDirector;
@@ -24,7 +25,7 @@ type ActorProfile = AgencyProfile;
 type Deal = { fee: number; morale: number; label: string };
 type CompanyTab = "roster" | "market" | "rookies";
 type SigningTarget = { actor: Actor; origin: "mature" | "rookie"; rookie?: RookieCandidate };
-type UtilityRoom = "agency" | null;
+type UtilityRoom = "agency" | "honors" | null;
 type PortraitGroup = "director" | "actor" | "rookie";
 
 const ASSET_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -97,6 +98,7 @@ type LocalGameSave = {
   studioFocusGenres?: string[];
   seasonStats?: SeasonStats;
   seasonArchive?: SeasonArchiveRecord[];
+  honorLedger?: HonorLedger;
   wordOfMouthGoalId?: ChapterGoalId | null;
   wordOfMouthProgress?: WordOfMouthProgress;
   chapterReleasePlanId?: ChapterReleasePlanId | null;
@@ -185,6 +187,7 @@ const workflowRooms = [
   { code: "PREMIERE", name: "首映电影院", scene: "cinema", prompt: "守候首周票房与真实观众口碑", action: "进入首周直播" },
   { code: "AGENCY", name: "艺人经纪部", scene: "agency", prompt: "完成年度经营并进入下一制片年", action: "打开经纪工作台" },
 ] as const;
+const honorRoom = { code: "ARCHIVE", name: "片场荣誉册", scene: "project", prompt: "翻阅长期成就、系列履历与赛季荣誉", action: "打开荣誉档案" } as const;
 
 function scriptThreshold(profile: ActorProfile) {
   return tierScriptThreshold(profile.tier);
@@ -370,6 +373,7 @@ export default function Home() {
   const [studioFocusGenres, setStudioFocusGenres] = useState<string[]>([]);
   const [seasonStats, setSeasonStats] = useState<SeasonStats>(() => emptySeasonStats(1));
   const [seasonArchive, setSeasonArchive] = useState<SeasonArchiveRecord[]>([]);
+  const [honorLedger, setHonorLedger] = useState<HonorLedger>(() => emptyHonorLedger());
   const [wordOfMouthGoalId, setWordOfMouthGoalId] = useState<ChapterGoalId | null>(null);
   const [wordOfMouthProgress, setWordOfMouthProgress] = useState<WordOfMouthProgress>(() => emptyWordOfMouthProgress());
   const [chapterReleasePlanId, setChapterReleasePlanId] = useState<ChapterReleasePlanId | null>(null);
@@ -431,6 +435,10 @@ export default function Home() {
         const restoredDirectors = save.directorPool?.length ? save.directorPool : directors;
         let restoredHistory = normalizeFilmHistory(save.history ?? []);
         let restoredIpSource = findIpSource(restoredHistory, save.ipSourceId ?? null);
+        if (restoredIpSource) {
+          const restoredSeriesKey = restoredIpSource.seriesId ?? restoredIpSource.id;
+          restoredIpSource = eligibleIpSources(restoredHistory).find((film) => (film.seriesId ?? film.id) === restoredSeriesKey) ?? null;
+        }
         const restoredIpActive = Boolean(restoredIpSource && save.ipRoute && save.ipRoute !== "original");
         const restoredGenreName = restoredIpActive ? resolveIpGenre(restoredIpSource, save.genreName) : save.genreName;
         if (restoredIpActive && restoredIpSource && !restoredIpSource.genre) {
@@ -496,6 +504,18 @@ export default function Home() {
         const restoredSeason = save.seasonStats ?? [...restoredHistory].filter((film) => (film.year ?? 0) >= seasonStartYear).reverse().reduce((stats, film) => addFilmToSeason(stats, { gross: film.gross, awards: film.awards, quality: film.quality ?? 75, breakEvenGross: film.breakEvenGross ?? 40000 }), emptySeasonStats(seasonStartYear));
         setSeasonStats(restoredSeason);
         setSeasonArchive(save.seasonArchive ?? []);
+        let restoredHonors = normalizeHonorLedger(save.honorLedger);
+        [...restoredHistory].reverse().forEach((film) => {
+          const source = film.seriesId ? restoredHistory.find((candidate) => candidate.id === film.seriesId || (candidate.seriesId === film.seriesId && (candidate.seriesEntry ?? 1) === (film.seriesEntry ?? 1) - 1)) : null;
+          const connectionIds = scriptConnections.filter((connection) => (film.traits ?? []).includes(connection.trait)).map((connection) => connection.id);
+          restoredHonors = recordFilmHonor(restoredHonors, { film, source, coreStyleId: film.coreStyleId, connectionIds });
+        });
+        Object.entries(save.actorHonors ?? {}).forEach(([actorId, honors]) => {
+          const numericId = Number(actorId);
+          const actor = restoredPool.find((candidate) => candidate.id === numericId);
+          if (actor && restoredContracts.some((contract) => contract.actorId === numericId) && honors.includes("最佳表演")) restoredHonors = recordActingHonor(restoredHonors, { actorId: numericId, name: actor.name, title: actor.gender === "女" ? "影后" : "影帝", year: Math.max(1, save.year - 1), filmTitle: "历史作品" });
+        });
+        setHonorLedger(restoredHonors);
         setWordOfMouthGoalId(save.wordOfMouthGoalId ?? (isWordOfMouthChapterYear(save.year) && restoredStage > 0 ? "critics" : null));
         setWordOfMouthProgress({ ...emptyWordOfMouthProgress(), ...(save.wordOfMouthProgress ?? {}) });
         setChapterReleasePlanId(save.chapterReleasePlanId ?? null);
@@ -587,13 +607,14 @@ export default function Home() {
       studioFocusGenres,
       seasonStats,
       seasonArchive,
+      honorLedger,
       wordOfMouthGoalId,
       wordOfMouthProgress,
       chapterReleasePlanId,
       history,
     };
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  }, [activePolicyIds, actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, chapterReleasePlanId, deals, director?.id, directorPool, ensembleCastId, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, ipSelection.route, ipSelection.sourceId, productionChoices, productionLocked, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieMarketSeed, rookieRefreshSeed, rookieRefreshYear, saveReady, scriptAnswers, scriptCommittedCount, scriptReport, seasonArchive, seasonStats, signedTalents, slot.id, stage, studioFocusGenres, studioPathCommitted, studioPathId, studioPathXp, studioXp, title, wordOfMouthGoalId, wordOfMouthProgress, year]);
+  }, [activePolicyIds, actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, chapterReleasePlanId, deals, director?.id, directorPool, ensembleCastId, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, honorLedger, investmentClaimedYear, ipSelection.route, ipSelection.sourceId, productionChoices, productionLocked, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieMarketSeed, rookieRefreshSeed, rookieRefreshYear, saveReady, scriptAnswers, scriptCommittedCount, scriptReport, seasonArchive, seasonStats, signedTalents, slot.id, stage, studioFocusGenres, studioPathCommitted, studioPathId, studioPathXp, studioXp, title, wordOfMouthGoalId, wordOfMouthProgress, year]);
 
   const studioLevel = Math.min(10, 1 + Math.floor(studioXp / 180));
   const studioXpProgress = studioXp % 180;
@@ -645,6 +666,10 @@ export default function Home() {
   const nextMarketEra = upcomingMarketEra(year);
   const currentRivalPlans = useMemo(() => rivalPlansForYear(year), [year]);
   const seasonStandings = useMemo(() => buildSeasonStandings(seasonStats), [seasonStats]);
+  const allCoreStyles = useMemo(() => Object.values(coreStylesByGenre).flat(), []);
+  const discoveredCoreStyles = useMemo(() => allCoreStyles.filter((style) => honorLedger.coreStyleIds.includes(style.id)), [allCoreStyles, honorLedger.coreStyleIds]);
+  const discoveredConnections = useMemo(() => scriptConnections.filter((connection) => honorLedger.connectionIds.includes(connection.id)), [honorLedger.connectionIds]);
+  const honorRecordCount = discoveredCoreStyles.length + discoveredConnections.length + Object.keys(honorLedger.genreRecords).length + (honorLedger.highestGrossFilm ? 1 : 0) + honorLedger.actingHonors.length + honorLedger.ipSeries.length + honorLedger.defeatedRivals.length + honorLedger.seasonTitles.length;
   const strategyContext = useMemo(() => ({
     budgetName: budget.name,
     genre: genre.name,
@@ -719,7 +744,7 @@ export default function Home() {
   const liveTrend = revealedDays === 7 && result ? result.trend : !latestReport ? "等待首映" : latestReport.change !== null && latestReport.change >= 0 ? "口碑发酵" : latestReport.change !== null && latestReport.change <= -12 ? "热度回落" : "市场运行";
   const liveTrendNote = revealedDays === 7 && result ? result.trendNote : !latestReport ? "首日票房、散场声音与网络评价即将同步更新。" : latestReport.change !== null && latestReport.change >= 0 ? `第 ${latestReport.day} 天票房较前一日上涨 ${latestReport.change}%，路人推荐正在转化为购票。` : latestReport.change !== null && latestReport.change <= -12 ? `第 ${latestReport.day} 天跌幅达到 ${Math.abs(latestReport.change)}%，内容口碑暂未承接首映热度。` : `第 ${latestReport.day} 天市场表现保持在常规区间，后续走势仍由口碑决定。`;
   const activeWorkflowRoom = workflowRooms[Math.min(stage, workflowRooms.length - 1)];
-  const activeRoom = utilityRoom === "agency" ? workflowRooms[6] : activeWorkflowRoom;
+  const activeRoom = utilityRoom === "agency" ? workflowRooms[6] : utilityRoom === "honors" ? honorRoom : activeWorkflowRoom;
 
   function openWorkflowRoom() {
     setUtilityRoom(null);
@@ -788,6 +813,12 @@ export default function Home() {
     const sourceGenre = genreMarket.find((item) => item.name === lockedGenreName);
     if (sourceGenre) setGenre(sourceGenre);
     resetCreativeProjectState();
+  }
+
+  function openHonorUtility() {
+    setUtilityRoom("honors");
+    setWorkspaceOpen(false);
+    setInStudioHub(false);
   }
 
   function chooseStudioPath(pathId: StudioPathId) {
@@ -1115,6 +1146,9 @@ export default function Home() {
     const nominations = judgeAwards(awardInput, slotCompetitors);
     const awardCap = awardWinCap(awardInput);
     const awards = nominations.filter((nomination) => nomination.won).map((nomination) => nomination.category);
+    const cultivatedPerformanceHonor = awards.includes("最佳表演") && performanceLead?.acting && performanceLead.acting >= 93 && (signedTalents.some((contract) => contract.actorId === performanceLead.id) || rookieAlumniIds.includes(performanceLead.id))
+      ? { actorId: performanceLead.id, name: performanceLead.name, title: performanceLead.gender === "女" ? "影后" as const : "影帝" as const, year, filmTitle: title }
+      : null;
     if (awards.includes("最佳表演") && performanceLead?.acting && performanceLead.acting >= 93) setActorHonors((current) => ({ ...current, [performanceLead.id]: [...new Set([...(current[performanceLead.id] ?? []), "最佳表演"])] }));
     const goalOutcome = annualGoal ? evaluateAnnualGoal(annualGoal, { gross, awards: awards.length, totalCost, genre: genre.name, castIds: cast.map((actor) => actor.id), audienceScore: roundedScore, breakEvenGross }) : undefined;
     const chapterAdvance = chapterActive && wordOfMouthGoalId ? advanceWordOfMouthChapter(wordOfMouthProgress, wordOfMouthGoalId, { audienceScore: roundedScore, openingPower, gross, breakEvenGross, awards: awards.length }) : null;
@@ -1126,6 +1160,7 @@ export default function Home() {
     const reputationGain = careerRewards.reputationGain + (goalOutcome?.reward.reputation ?? 0) + (chapterReward?.reputation ?? 0);
     const dailyReports = buildDailyReports(title, days, wordOfMouth, weekScores, { director, cast, genre: genre.name, quality, honors: actorHonors });
     const filmRecord = createFilmHistoryRecord({ year, title, genre: genre.name, gross, awards: awards.length, score: roundedScore, quality, breakEvenGross, directorId: director.id, castIds: cast.map((actor) => actor.id), coreStyleId: scriptBuild.core?.id, buildName: scriptBuild.buildName, traits: [...new Set([...ipEffects.inheritedTraits, ...scriptBuild.finalTraits])], libraryMultiplier: ensembleDownstream.libraryMultiplier * studioStrategy.libraryMultiplier * eraEffects.libraryMultiplier, selection: ipSelection, effects: ipEffects });
+    setHonorLedger((current) => recordFilmHonor(current, { film: filmRecord, source: ipEffects.source, coreStyleId: scriptBuild.core?.id, connectionIds: scriptBuild.connections.map((connection) => connection.id), actingHonor: cultivatedPerformanceHonor }));
     const pathXpGain = studioPathId && studioPathCommitted && year >= 3 ? studioPathXpGain({ quality, gross, breakEvenGross, awards: awards.length }) : 0;
     setResult({ quality, gross, profit, score: roundedScore, audience, days, monthDays, weekGross, tailGross, studioRevenue, investorShare, investmentAmount: investmentClaimed ? annualInvestment : 0, successBonus, breakEvenGross, overheadCost, dailyReports, awards, nominations, awardCap, goalOutcome, chapterOutcome, xpGain, reputationGain, pathXpGain, strategyNotes: combinedStrategyNotes, reachUsed: studioReach, wordOfMouth, openingPower, retention: release.retention, trend, trendNote, competitionPressure, scheduleRisk: productionTotals.scheduleRisk, scheduleEfficiency: release.scheduleEfficiency, libraryMultiplier: filmRecord.libraryMultiplier, buildName: scriptBuild.buildName, filmRecord });
     setStudioXp((value) => value + xpGain);
@@ -1253,7 +1288,9 @@ export default function Home() {
     if (year % 5 === 0) {
       const finalStandings = buildSeasonStandings(seasonStats);
       const rank = Math.max(1, finalStandings.findIndex((entry) => entry.player) + 1);
-      setSeasonArchive((current) => [{ startYear: seasonStats.startYear, endYear: year, rank, score: finalStandings.find((entry) => entry.player)?.score ?? 0, title: seasonResultTitle(rank, seasonStats) }, ...current].slice(0, 6));
+      const archiveRecord = { startYear: seasonStats.startYear, endYear: year, rank, score: finalStandings.find((entry) => entry.player)?.score ?? 0, title: seasonResultTitle(rank, seasonStats) };
+      setSeasonArchive((current) => [archiveRecord, ...current].slice(0, 6));
+      setHonorLedger((current) => recordSeasonHonor(current, archiveRecord, finalStandings));
       setSeasonStats(emptySeasonStats(followingYear));
     }
     setYear((value) => value + 1);
@@ -1301,18 +1338,18 @@ export default function Home() {
         <header className="studio-hub__intro">
           <span>DREAM STUDIO · YEAR {String(year).padStart(2, "0")}</span>
           <h1>欢迎回到，<em>造梦片场。</em></h1>
-          <p>电影制作按房间依次推进；经纪部与融资中心随时开放，不会改变当前项目进度。</p>
+          <p>电影制作按房间依次推进；经纪部、融资中心与荣誉册随时开放，不会改变当前项目进度。</p>
         </header>
         {year > 1 && <aside className="annual-rhythm-card" aria-label={`第${year}年节奏提示`}>
           <span>{annualRhythm.eyebrow}</span>
           <b>{annualRhythm.title}</b>
           <p>{annualRhythm.description}</p>
           <div><small>{annualRhythm.primary}</small><small>{annualRhythm.secondary}</small></div>
-          <i>下一节点 · {annualRhythm.nextUnlock}</i>
         </aside>}
         <div className="studio-rooms">
           <StudioRoomButton className="room-current" code={`当前主线 · ${activeWorkflowRoom.code}`} name={activeWorkflowRoom.name} note={`${stageLabels[stage]} · ${activeWorkflowRoom.prompt}`} onClick={openWorkflowRoom} />
           <StudioRoomButton className="room-agency" code="ALWAYS OPEN" name="艺人经纪部" note={`${signedTalents.length}/${rosterCapacity} 位旗下艺人 · 签约与培训`} onClick={openAgencyUtility} />
+          <StudioRoomButton className="room-honors" code="ALWAYS OPEN" name="片场荣誉册" note={`${honorRecordCount} 项长期记录 · 成就与系列档案`} onClick={openHonorUtility} />
           <StudioRoomButton className="room-finance" code="ALWAYS OPEN" name="融资中心" note={investmentLocked ? "渠道已开放 · 第2年可正式融资" : investmentClaimed ? `第${year}年融资已完成` : `本年度可融资 ¥${money(annualInvestment)}`} onClick={() => setShowFinance(true)} />
         </div>
         <footer className="studio-hub__status">
@@ -1323,14 +1360,14 @@ export default function Home() {
       </section> : <>
       <div className="room-scene-nav">
         <button type="button" onClick={returnToHub}>← 返回主片场</button>
-        <span>{utilityRoom === "agency" ? "常驻支线" : stageLabels[stage]} · {activeRoom.name}</span>
+        <span>{utilityRoom ? "常驻支线" : stageLabels[stage]} · {activeRoom.name}</span>
         <small>《{title || "未命名计划"}》</small>
       </div>
       {!workspaceOpen && <section className={`department-scene department-scene--${activeRoom.scene}`} aria-label={`${activeRoom.name}场景`}>
         <div className="department-scene__copy">
           <span>{activeRoom.code} DEPARTMENT</span>
           <h2>{activeRoom.name}</h2>
-          <p>{utilityRoom === "agency" ? "经纪业务不会改变电影制作进度，完成后可随时回到主片场。" : activeRoom.prompt}</p>
+          <p>{utilityRoom === "agency" ? "经纪业务不会改变电影制作进度，完成后可随时回到主片场。" : utilityRoom === "honors" ? "这里长期保存你的创作发现、代表作、系列树与赛季战绩。" : activeRoom.prompt}</p>
           <button type="button" onClick={() => setWorkspaceOpen(true)}>{activeRoom.action}<i>→</i></button>
         </div>
         {activeRoom.scene === "cinema" && result && <div className="cinema-screen-live">
@@ -1374,7 +1411,7 @@ export default function Home() {
               </>}
               <SectionTitle number="竞" title={`五年影业赛季 · 第 ${seasonStats.films + 1}/5 部`} note={`第 ${seasonStats.startYear}—${seasonStats.startYear + 4} 年累计比较，不因单片失利立即结束`} />
               <div className="rival-plan-grid">{currentRivalPlans.map((plan) => <article key={plan.id} style={{ borderTopColor: plan.color }}><span>{plan.identity}</span><b>{plan.name}</b><p>《{plan.title}》· {plan.genre}</p><small>{plan.approach}{plan.genre === genre.name ? ` · 同题材压力 +${plan.pressure}%` : ""}</small></article>)}</div>
-              <div className="season-standing"><header><span>SEASON STANDING</span><b>当前行业排名</b><p>{seasonStats.films ? `已完成 ${seasonStats.films} 部作品` : "首部作品完成后开始计分"}</p></header>{seasonStandings.map((entry, index) => <div className={entry.player ? "player" : ""} key={entry.id}><span>{index + 1}</span><b>{entry.name}</b><small>票房 ¥{money(entry.gross)} · {entry.awards} 奖 · {entry.hits} 爆款</small><strong>{entry.score}</strong></div>)}{!!seasonArchive.length && <footer>上届荣誉 · {seasonArchive[0].title}（第 {seasonArchive[0].rank} 名）</footer>}</div>
+              <div className="season-standing"><header><span>SEASON STANDING</span><b>当前行业排名</b><p>{seasonStats.films ? `已完成 ${seasonStats.films} 部作品` : "首部作品完成后开始计分"}</p></header>{seasonStandings.map((entry, index) => <div className={entry.player ? "player" : ""} key={entry.id}><span>{index + 1}</span><b>{entry.name}</b><small>票房 ¥{money(entry.gross)} · 均质 {entry.averageQuality} · {entry.awards} 奖 · {entry.hits} 爆款</small><strong>{entry.score}</strong></div>)}<p className="season-rule">{seasonScoringRule}。奖项由成片质量与厂牌取向判定，票房本身不直接换奖。</p>{!!seasonArchive.length && <footer>上届荣誉 · {seasonArchive[0].title}（第 {seasonArchive[0].rank} 名）</footer>}</div>
               <SectionTitle number="IP" title="选择本年项目来源" note="原创立项，或延续近三部作品形成跨年度系列" />
               {!!recentFilmRecords.length && <div className="ip-history-list"><header><span>RECENT FILMS</span><b>近三部作品档案</b></header>{recentFilmRecords.map((film, index) => <article key={film.id}><span>{index + 1}</span><div><b>《{film.title}》</b><p>{film.genre ? `${film.genre} · 开发IP后题材固定` : "旧档未记录题材 · 首次开发时归档"}</p></div><i className={isIpEligible(film) ? "eligible" : "locked"}>{isIpEligible(film) ? "可开发IP" : "尚未达标"}</i></article>)}</div>}
               <div className="ip-source-grid">
@@ -1543,7 +1580,7 @@ export default function Home() {
                 <SectionTitle number="结" title="项目与生涯结算" note={`院线分账后片方按 34% 回款${result.investorShare ? "，先结算投资方分成" : ""}，剩余盈利继续结算税费与主创分成`} />
                 <div className="growth-result"><div><span>制片人经验</span><b>+{result.xpGain} XP</b><small>当前 Lv.{studioLevel} · {studioXpProgress}/180</small></div><div><span>行业声望</span><b className={result.reputationGain >= 0 ? "positive" : "negative"}>{result.reputationGain >= 0 ? "+" : ""}{result.reputationGain}</b><small>当前声望 {reputation}</small></div><div><span>项目收益</span><b className={result.profit >= 0 ? "positive" : "negative"}>{result.profit >= 0 ? "+" : "-"}¥{money(Math.abs(result.profit))}</b><small>30日票房 ¥{money(result.gross)} · 片方分账 ¥{money(result.studioRevenue)}{result.investorShare ? ` · 投资方分成 -¥${money(result.investorShare)}` : ""}</small></div></div>
                 {currentStudioPath && year >= 3 && <div className="strategy-result-card"><header><div><span>STUDIO IDENTITY</span><b>{currentStudioPath.name} · 厂牌经验 +{result.pathXpGain ?? 0}</b></div><strong>Lv.{strategyLevel(studioPathXp)}</strong></header><div>{result.strategyNotes?.map((note) => <p key={note}>{note}</p>)}</div></div>}
-                <div className="season-result-card"><header><span>五年赛季进度</span><b>{seasonStats.films}/5 部</b><p>{year % 5 === 0 ? "本年度经营完成后进行赛季总评" : `距离阶段总评还有 ${5 - seasonStats.films} 部`}</p></header>{seasonStandings.slice(0, 4).map((entry, index) => <div className={entry.player ? "player" : ""} key={entry.id}><span>{index + 1}</span><b>{entry.name}</b><small>¥{money(entry.gross)} · {entry.awards} 奖</small><strong>{entry.score}</strong></div>)}</div>
+                <div className="season-result-card"><header><span>五年赛季进度</span><b>{seasonStats.films}/5 部</b><p>{year % 5 === 0 ? "本年度经营完成后进行赛季总评" : `距离阶段总评还有 ${5 - seasonStats.films} 部`}</p></header>{seasonStandings.map((entry, index) => <div className={entry.player ? "player" : ""} key={entry.id}><span>{index + 1}</span><b>{entry.name}</b><small>¥{money(entry.gross)} · {entry.awards} 奖</small><strong>{entry.score}</strong></div>)}</div>
                 <div className="career-update"><span>艺人动态</span><b>{cast.map((actor) => actor.name).join("、")}获得项目经验；下一年度的号召力和身价将按照票房回本倍数重新评估。自社新人若以高演技搭档高人气演员，还会获得额外曝光成长。</b></div>
                 {result.filmRecord && <><SectionTitle number="IP" title={result.filmRecord.route === "original" ? "作品IP潜力" : "系列资产更新"} note={result.filmRecord.route === "original" ? "成功作品会成为下一年度的项目来源" : `《${result.filmRecord.seriesTitle}》第 ${result.filmRecord.seriesEntry} 部`} /><div className={`ip-result-card ${isIpEligible(result.filmRecord) ? "qualified" : "developing"}`}><span>{isIpEligible(result.filmRecord) ? "✓" : "↗"}</span><div><small>{routeName(result.filmRecord.route ?? "original")} · BRAND ASSET</small><b>{result.filmRecord.route === "original" ? isIpEligible(result.filmRecord) ? "IP开发资格已解锁" : "作品尚在积累品牌认知" : `《${result.filmRecord.seriesTitle}》系列继续成长`}</b><p>品牌热度 {result.filmRecord.brandHeat} · 系列疲劳 {result.filmRecord.fatigue} · 片库长尾 ×{(result.filmRecord.libraryMultiplier ?? 1).toFixed(2)}</p></div><strong>{result.filmRecord.route === "original" ? isIpEligible(result.filmRecord) ? "下一年可选择正统续集、角色衍生或重启" : "提高评分、回本倍数或赢得奖项即可解锁" : `第 ${result.filmRecord.seriesEntry} 部已写入系列履历`}</strong></div></>}
                 {annualGoal && result.goalOutcome && <><SectionTitle number="委" title="年度委托结算" note={result.goalOutcome.completed ? "目标达成，额外奖励已发放" : "未达成不扣除资源，保留本次经验"} /><div className={`goal-result ${result.goalOutcome.completed ? "complete" : "missed"}`}><span>{result.goalOutcome.completed ? "✓" : "↗"}</span><div><small>{annualGoal.title} · {"★".repeat(annualGoal.stars)}</small><b>{result.goalOutcome.completed ? "委托完成" : "本年惜未完成"}</b><p>{result.goalOutcome.explanation}</p><i>{result.goalOutcome.progressLabel}</i></div><strong>{result.goalOutcome.completed ? `+¥${money(result.goalOutcome.reward.cash)} · +${result.goalOutcome.reward.xp} XP · +${result.goalOutcome.reward.reputation} 声望` : "下一年会刷新三个新目标"}</strong></div></>}
@@ -1553,6 +1590,43 @@ export default function Home() {
                 {year === 2 && !studioPathCommitted && <section className="studio-path-unlock"><SectionTitle number="新" title="第二部作品完成 · 确立制片厂路线" note="此时你已经体验过两部电影，再选择未来长期打法；路线从第三年生效" /><div className="studio-path-grid">{studioPaths.map((path) => <button type="button" key={path.id} className={studioPathId === path.id ? "selected" : ""} aria-pressed={studioPathId === path.id} onClick={() => chooseStudioPath(path.id)}><span>{path.code}</span><b>{path.name}</b><p>{path.tagline}</p><small>{path.strength}</small><i>{path.pressure}</i></button>)}</div>{currentStudioPath && <div className="path-final-confirm"><b>已预选：{currentStudioPath.name}</b><p>{currentStudioPath.strength}；{currentStudioPath.pressure}</p>{studioPathId === "genre" && <div className="studio-focus-genres"><span>选择两个永久专精题材</span><div>{genreMarket.map((item) => <button type="button" key={item.name} className={studioFocusGenres.includes(item.name) ? "selected" : ""} onClick={() => toggleStudioFocusGenre(item.name)}>{item.name}</button>)}</div><p>{studioFocusGenres.length}/2 · 确认后不可更换</p></div>}<button type="button" disabled={studioPathId === "genre" && studioFocusGenres.length !== 2} onClick={confirmStudioPath}>确认厂牌路线 · 第三年生效</button></div>}</section>}
                 <div className="year-end"><div><span>{year === 2 && !studioPathCommitted ? "先完成本年长期决策" : "经纪业务已解锁"}</span><b>{year === 2 && !studioPathCommitted ? "第二部作品结束后，选择制片厂路线再进入经营期。" : "把电影收益变成公司的长期艺人资产。"}</b><small>{year === 2 && !studioPathCommitted ? "这项选择第三年才生效，不会倒推影响本片结果" : "签约成熟艺人，或从新人开始培养下一位明星"}</small></div><button disabled={year === 2 && !studioPathCommitted} onClick={enterCompanyManagement}>{year === 2 && !studioPathCommitted ? "请先确认厂牌路线" : "进入公司经营期"} <i>→</i></button></div>
               </>}
+            </>
+          )}
+
+          {utilityRoom === "honors" && (
+            <>
+              <PageHead code="DREAM STUDIO ARCHIVE" title="每一部电影，都在" accent="留下片场历史。" sub="创作发现、代表作、人才与赛季战绩会永久累计，不受近三部片库限制。" stamp={`${honorRecordCount} RECORDS`} />
+              <div className="honor-overview">
+                <div><span>剧本发现</span><b>{discoveredCoreStyles.length + discoveredConnections.length}</b><small>{discoveredCoreStyles.length}/{allCoreStyles.length} 流派 · {discoveredConnections.length}/{scriptConnections.length} 连接</small></div>
+                <div><span>题材纪录</span><b>{Object.keys(honorLedger.genreRecords).length}</b><small>共 {genres.length} 个题材等待刷新</small></div>
+                <div><span>IP系列</span><b>{honorLedger.ipSeries.length}</b><small>只记录真正开拍的系列树</small></div>
+                <div><span>五年荣誉</span><b>{honorLedger.seasonTitles.length}</b><small>赛季称号与击败竞品永久保留</small></div>
+              </div>
+
+              <SectionTitle number="构" title="创作图鉴" note="亲自完成成片后才会点亮" />
+              <div className="honor-discovery-grid">
+                <section><header><span>CORE STYLES</span><b>已发现剧本流派</b><strong>{discoveredCoreStyles.length}/{allCoreStyles.length}</strong></header><div>{discoveredCoreStyles.map((style) => <article key={style.id}><small>{style.genre}</small><b>{style.name}</b><p>{style.trait}</p></article>)}</div>{!discoveredCoreStyles.length && <p className="honor-empty">完成第一部电影后，采用的核心流派会在这里点亮。</p>}</section>
+                <section><header><span>CROSS CONNECTIONS</span><b>已发现跨流派连接</b><strong>{discoveredConnections.length}/{scriptConnections.length}</strong></header><div>{discoveredConnections.map((connection) => <article key={connection.id}><small>跨流派配方</small><b>{connection.name}</b><p>{connection.trait}</p></article>)}</div>{!discoveredConnections.length && <p className="honor-empty">在剧本构筑中激活连接并完成电影，即可留下配方记录。</p>}</section>
+              </div>
+
+              <SectionTitle number="片" title="作品纪录" note="评分纪录按题材分别竞争，票房纪录全片场唯一" />
+              <div className="honor-film-records">
+                <article className="honor-top-film"><span>ALL-TIME BOX OFFICE</span>{honorLedger.highestGrossFilm ? <><b>《{honorLedger.highestGrossFilm.title}》</b><strong>¥{money(honorLedger.highestGrossFilm.gross)}</strong><p>第 {honorLedger.highestGrossFilm.year} 年 · {honorLedger.highestGrossFilm.genre} · 评分 {honorLedger.highestGrossFilm.score.toFixed(1)}</p></> : <p>尚无影片纪录</p>}</article>
+                <div className="honor-genre-records">{genres.map((item) => { const record = honorLedger.genreRecords[item.name]; return <article key={item.name}><span>{item.icon}</span><div><small>{item.name}</small><b>{record ? `《${record.title}》` : "等待首部作品"}</b></div><strong>{record ? record.score.toFixed(1) : "--"}</strong></article>; })}</div>
+              </div>
+
+              <SectionTitle number="星" title="自社影帝影后" note="由片场从新人阶段签下并培养，获得最佳表演后入册" />
+              <div className="honor-acting-list">{honorLedger.actingHonors.map((item) => <article key={`${item.actorId}-${item.title}`}><span>★</span><div><b>{item.name} · {item.title}</b><p>第 {item.year} 年《{item.filmTitle}》</p></div></article>)}{!honorLedger.actingHonors.length && <p className="honor-empty">还没有自社新人赢得最佳表演。签下新人、持续培养并让其担纲高质量影片。</p>}</div>
+
+              <SectionTitle number="IP" title="IP系列树" note="从母片到最新一部，按真实开发顺序永久归档" />
+              <div className="honor-ip-list">{honorLedger.ipSeries.map((series) => <article key={series.seriesId}><header><span>{series.genre}</span><b>《{series.title}》系列</b><strong>{series.nodes.length} 部</strong></header><div>{series.nodes.map((node, index) => <div key={node.id}><i>{node.entry}</i><span><b>《{node.title}》</b><small>第 {node.year} 年 · {routeName(node.route)} · 评分 {node.score.toFixed(1)} · ¥{money(node.gross)}</small></span>{index < series.nodes.length - 1 && <em>→</em>}</div>)}</div></article>)}{!honorLedger.ipSeries.length && <p className="honor-empty">开发首部IP续作后，母片与后续作品会组成系列树。</p>}</div>
+
+              <SectionTitle number="冠" title="竞品与五年赛季" note="只有完成五年结算后才会正式写入荣誉" />
+              <div className="honor-season-grid">
+                <section><header><span>DEFEATED RIVALS</span><b>击败过的竞品</b></header>{honorLedger.defeatedRivals.map((item) => <article key={item.id}><span>胜</span><div><b>{item.name}</b><small>第 {item.year} 年 · {item.playerScore} : {item.rivalScore}</small></div></article>)}{!honorLedger.defeatedRivals.length && <p className="honor-empty">首个五年赛季结束后，根据最终积分记录被你击败的片厂。</p>}</section>
+                <section><header><span>FIVE-YEAR TITLES</span><b>五年赛季称号</b></header>{honorLedger.seasonTitles.map((item) => <article key={item.startYear}><span>{item.rank}</span><div><b>{item.title}</b><small>第 {item.startYear}—{item.endYear} 年 · {item.score} 分</small></div></article>)}{!honorLedger.seasonTitles.length && <p className="honor-empty">第5、10、15年……会颁发新的赛季称号。</p>}</section>
+              </div>
+              <button type="button" className="honor-return" onClick={returnToHub}>完成翻阅 · 返回主片场</button>
             </>
           )}
 

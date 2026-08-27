@@ -5,11 +5,12 @@ import { annualInvestmentAmount, boxOfficeSettlementTarget, buildAudienceScoreCu
 import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts";
 import { evaluateScript, getScriptQuestionBank, getScriptQuestions, rewriteScript } from "../app/script-engine.ts";
 import { coreStylesByGenre, deriveScriptBuild, describeBeginnerBuildChange, describeBuildChange, describeCoreStyle, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, normalizeSequentialScriptProgress, resolveEnsembleCast, resolveEnsembleDownstream, scriptConnections, scriptQuestionState, summarizeScriptDownstream } from "../app/script-build-system.ts";
-import { addFilmToSeason, buildSeasonStandings, defaultPoliciesForPath, emptySeasonStats, marketEraForYear, policiesForPath, resolveMarketEraEffects, resolveStudioStrategy, rivalGenrePressure, rivalPlansForYear, strategyLevel, studioPathXpGain, studioPaths, summarizeStrategyEffects, upcomingMarketEra } from "../app/studio-strategy-system.ts";
+import { addFilmToSeason, buildSeasonStandings, defaultPoliciesForPath, emptySeasonStats, marketEraForYear, policiesForPath, resolveMarketEraEffects, resolveStudioStrategy, rivalGenrePressure, rivalPlansForYear, seasonScoringRule, strategyLevel, studioPathXpGain, studioPaths, summarizeStrategyEffects, upcomingMarketEra } from "../app/studio-strategy-system.ts";
 import { availableReleaseSlotIds, awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, releaseSlotStatus, resolveProductionChain } from "../app/game-systems.ts";
 import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, normalizeFilmHistory, resolveIpGenre, resolveIpProjectEffects } from "../app/ip-system.ts";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
 import { advanceWordOfMouthChapter, annualRhythmForYear, emptyWordOfMouthProgress, strategySlotCapacityForYear, wordOfMouthGoals, wordOfMouthLegacyEffects, wordOfMouthReleasePlans } from "../app/progression-system.ts";
+import { emptyHonorLedger, normalizeHonorLedger, recordFilmHonor, recordSeasonHonor } from "../app/honor-system.ts";
 
 const releaseBase = {
   appeal: 82,
@@ -254,6 +255,16 @@ test("annual scouting favors ordinary rookies while the yearly refresh guarantee
   assert.deepEqual(buildRookieMarket(1, new Set(), true, 20260827), buildRookieMarket(1, new Set(), true, 20260827), "a persisted refresh seed must reproduce the same list");
   const refreshLineups = new Set(Array.from({ length: 100 }, (_, seed) => buildRookieMarket(1, new Set(), true, seed).map((rookie) => rookie.id).join("-")));
   assert.ok(refreshLineups.size > 20, "independent refresh seeds should produce varied rookie lists");
+});
+
+test("IP development only exposes the latest eligible installment in each series", () => {
+  const history = [
+    { ...hitIpSource, id: "film-3", year: 3, title: "烽火行动3", seriesId: hitIpSource.id, seriesEntry: 3, score: 8.9 },
+    { ...hitIpSource, id: "film-2", year: 2, title: "烽火行动2", seriesId: hitIpSource.id, seriesEntry: 2, score: 8.8 },
+    hitIpSource,
+  ];
+  assert.deepEqual(eligibleIpSources(history).map((film) => film.title), ["烽火行动3"]);
+  assert.deepEqual(eligibleIpSources([{ ...history[0], score: 7.2, awards: 0, gross: 20000 }, history[1]]), []);
 });
 
 test("annual rhythm spreads the second-to-fifth-year unlocks instead of stacking them", () => {
@@ -668,9 +679,9 @@ test("genre specialization and market eras change rules without one permanent be
 test("persistent rivals announce deterministic projects and create visible same-genre pressure", () => {
   const plans = rivalPlansForYear(4);
   assert.deepEqual(plans, rivalPlansForYear(4));
-  assert.equal(plans.length, 3);
-  assert.equal(new Set(plans.map((plan) => plan.name)).size, 3);
-  assert.deepEqual(plans.map((plan) => plan.pressure), [6, 4, 5]);
+  assert.equal(plans.length, 4);
+  assert.equal(new Set(plans.map((plan) => plan.name)).size, 4);
+  assert.deepEqual(plans.map((plan) => plan.pressure), [6, 4, 5, 5]);
   assert.ok(plans.every((plan) => plan.genre && plan.title && plan.pressure > 0));
   assert.equal(rivalGenrePressure(4, "不存在的题材"), 0);
   assert.ok(rivalGenrePressure(4, plans[0].genre) >= plans[0].pressure);
@@ -694,11 +705,36 @@ test("five-film seasons reward balanced long-term performance and keep rivals co
   }
   assert.equal(stats.films, 5);
   const standings = buildSeasonStandings(stats);
-  assert.equal(standings.length, 4);
-  assert.equal(new Set(standings.map((entry) => entry.id)).size, 4);
+  assert.equal(standings.length, 5);
+  assert.equal(new Set(standings.map((entry) => entry.id)).size, 5);
   assert.ok(standings.every((entry) => entry.films === 5 && entry.score > 0));
   assert.ok(standings.some((entry) => entry.player));
+  assert.match(seasonScoringRule, /票房.*奖.*爆款.*平均质量/);
   assert.ok(studioPathXpGain({ quality: 90, gross: 70000, breakEvenGross: 40000, awards: 2 }) > studioPathXpGain({ quality: 70, gross: 30000, breakEvenGross: 40000, awards: 0 }));
+  const rivalOnly = buildSeasonStandings({ ...emptySeasonStats(1), films: 3 });
+  assert.ok(rivalOnly.findIndex((entry) => entry.id === "titan") < rivalOnly.findIndex((entry) => entry.id === "green"));
+  assert.ok((rivalOnly.find((entry) => entry.id === "green")?.awards ?? 99) <= 3);
+});
+
+test("the permanent honor ledger keeps creative discoveries, franchise trees and season victories", () => {
+  const source = { ...hitIpSource, id: "series-root", title: "烽火行动" };
+  const sequel = { ...hitIpSource, id: "series-two", year: 2, title: "烽火行动2", seriesId: source.id, seriesTitle: source.title, seriesEntry: 2, route: "sequel", gross: 91000, score: 9.1 };
+  let ledger = recordFilmHonor(emptyHonorLedger(), { film: source, coreStyleId: "action-tactical", connectionIds: ["clue-turn"] });
+  ledger = recordFilmHonor(ledger, { film: sequel, source, coreStyleId: "action-epic", connectionIds: ["people-heart"], actingHonor: { actorId: 101, name: "叶南枝", title: "影后", year: 2, filmTitle: sequel.title } });
+  assert.deepEqual(ledger.coreStyleIds, ["action-tactical", "action-epic"]);
+  assert.deepEqual(ledger.connectionIds, ["clue-turn", "people-heart"]);
+  assert.equal(ledger.highestGrossFilm?.title, sequel.title);
+  assert.equal(ledger.genreRecords[sequel.genre].score, 9.1);
+  assert.deepEqual(ledger.ipSeries[0].nodes.map((node) => node.entry), [1, 2]);
+  assert.equal(ledger.actingHonors[0].title, "影后");
+
+  const playerStats = { startYear: 1, films: 5, gross: 400000, awards: 4, hits: 3, qualityTotal: 440 };
+  const standings = buildSeasonStandings(playerStats);
+  const playerRank = standings.findIndex((entry) => entry.player) + 1;
+  ledger = recordSeasonHonor(ledger, { startYear: 1, endYear: 5, rank: playerRank, score: standings.find((entry) => entry.player).score, title: "五年最佳片厂" }, standings);
+  assert.equal(ledger.seasonTitles.length, 1);
+  assert.ok(ledger.defeatedRivals.length > 0);
+  assert.deepEqual(normalizeHonorLedger(ledger), ledger);
 });
 
 test("beginner feedback reveals one plain-language consequence only after commitment", () => {

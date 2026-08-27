@@ -42,7 +42,7 @@ test("server-renders the visual movie studio hub", async () => {
 });
 
 test("keeps the mobile shell separate from simulation systems", async () => {
-  const [page, layout, mobileUi, css, economy, scriptEngine, scriptBuildSystem, gameSystems, ipSystem, talentSystem, competitionSystem, marketSystem, studioStrategySystem, progressionSystem, staticEntry] = await Promise.all([
+  const [page, layout, mobileUi, css, economy, scriptEngine, scriptBuildSystem, gameSystems, ipSystem, talentSystem, competitionSystem, marketSystem, studioStrategySystem, progressionSystem, honorSystem, staticEntry] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/mobile-ui.tsx", import.meta.url), "utf8"),
@@ -57,6 +57,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
     readFile(new URL("../app/market-system.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/studio-strategy-system.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/progression-system.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/honor-system.ts", import.meta.url), "utf8"),
     readFile(new URL("../static-site/main.tsx", import.meta.url), "utf8"),
   ]);
 
@@ -85,6 +86,18 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(progressionSystem, /strategySlotCapacityForYear/);
   assert.match(progressionSystem, /wordOfMouthLegacyEffects/);
   assert.match(page, /五年影业赛季/);
+  assert.match(page, /片场荣誉册/);
+  assert.match(page, /已发现剧本流派/);
+  assert.match(page, /已发现跨流派连接/);
+  assert.match(page, /自社影帝影后/);
+  assert.match(page, /IP系列树/);
+  assert.match(page, /击败过的竞品/);
+  assert.match(page, /五年赛季称号/);
+  assert.match(page, /honorLedger/);
+  assert.match(honorSystem, /recordFilmHonor/);
+  assert.match(honorSystem, /recordSeasonHonor/);
+  assert.doesNotMatch(page, /下一节点 · \{annualRhythm\.nextUnlock\}/);
+  assert.match(page, /奖项由成片质量与厂牌取向判定/);
   assert.match(page, /下一年预告/);
   assert.match(page, /rivalGenrePressure\(year, genre\.name\)/);
   assert.match(page, /studioStrategy\.qualityBonus \+ eraEffects\.qualityBonus/);

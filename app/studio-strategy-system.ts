@@ -138,7 +138,10 @@ export const rivalStudios: RivalStudio[] = [
   { id: "titan", name: "巨幕影业", identity: "大片与头部IP", genres: ["科幻冒险", "动作战争", "犯罪悬疑"], color: "#ff7653" },
   { id: "green", name: "青禾映画", identity: "作者电影与奖项", genres: ["历史传记", "都市爱情", "犯罪悬疑"], color: "#6fc4ae" },
   { id: "joy", name: "欢乐时代", identity: "喜剧与大众市场", genres: ["合家欢喜剧", "都市爱情", "动作战争"], color: "#e2b850" },
+  { id: "nova", name: "星潮传媒", identity: "新锐演员与类型潮流", genres: ["犯罪悬疑", "科幻冒险", "都市爱情"], color: "#8e9cff" },
 ];
+
+export const seasonScoringRule = "赛季分 = 累计票房每3,000万1分 + 每项奖4分 + 每部爆款5分 + 平均质量×0.4";
 
 const emptyEffects = (): StudioStrategyEffects => ({
   budgetCostMultiplier: 1,
@@ -322,13 +325,13 @@ export function rivalPlansForYear(year: number): RivalPlan[] {
   return rivalStudios.map((studio, index) => {
     const genre = studio.genres[(year + index * 2) % studio.genres.length];
     const titleSeed = ["边界", "回声", "远航", "重逢", "风暴", "旧梦"][(year * 2 + index) % 6];
-    const suffix = studio.id === "titan" ? "计划" : studio.id === "green" ? "手记" : "大作战";
+    const suffix = studio.id === "titan" ? "计划" : studio.id === "green" ? "手记" : studio.id === "nova" ? "新篇" : "大作战";
     return {
       ...studio,
       genre,
       title: `${titleSeed}${suffix}`,
-      approach: studio.id === "titan" ? "抢占头部档期" : studio.id === "green" ? "瞄准口碑与奖项" : "争夺大众观众",
-      pressure: studio.id === "titan" ? 6 : studio.id === "green" ? 4 : 5,
+      approach: studio.id === "titan" ? "抢占头部档期" : studio.id === "green" ? "瞄准口碑与奖项" : studio.id === "nova" ? "押注新锐类型" : "争夺大众观众",
+      pressure: studio.id === "titan" ? 6 : studio.id === "green" ? 4 : studio.id === "nova" ? 5 : 5,
     };
   });
 }
@@ -358,11 +361,14 @@ function rivalSeasonStats(studio: RivalStudio, startYear: number, films: number)
     const year = startYear + index;
     const studioIndex = rivalStudios.findIndex((item) => item.id === studio.id);
     const wave = ((year * 17 + studioIndex * 23) % 21) - 10;
-    const grossBase = studio.id === "titan" ? 75000 : studio.id === "green" ? 48000 : 64000;
-    const qualityBase = studio.id === "green" ? 89 : studio.id === "titan" ? 83 : 80;
-    const awards = studio.id === "green" ? ((year + studioIndex) % 2 === 0 ? 2 : 1) : (year + studioIndex) % 3 === 0 ? 1 : 0;
+    const grossBase = studio.id === "titan" ? 79000 : studio.id === "green" ? 54000 : studio.id === "nova" ? 65000 : 68000;
+    const qualityBase = studio.id === "green" ? 90 : studio.id === "nova" ? 85 : studio.id === "titan" ? 84 : 82;
+    const quality = qualityBase + Math.round(wave / 4);
+    const awards = studio.id === "green"
+      ? quality >= 92 && (year + studioIndex) % 3 === 0 ? 2 : quality >= 89 ? 1 : 0
+      : quality >= 87 && (year + studioIndex) % 3 === 0 ? 1 : 0;
     const gross = Math.max(26000, grossBase + wave * 1700);
-    stats = addFilmToSeason(stats, { gross, awards, quality: qualityBase + Math.round(wave / 4), breakEvenGross: studio.id === "titan" ? 52000 : 36000 });
+    stats = addFilmToSeason(stats, { gross, awards, quality, breakEvenGross: studio.id === "titan" ? 52000 : 36000 });
   }
   return stats;
 }
@@ -370,7 +376,7 @@ function rivalSeasonStats(studio: RivalStudio, startYear: number, films: number)
 function seasonScore(stats: SeasonStats) {
   if (!stats.films) return 0;
   const averageQuality = stats.qualityTotal / stats.films;
-  return Math.round(stats.gross / 5000 + stats.awards * 16 + stats.hits * 9 + averageQuality * .8);
+  return Math.round(stats.gross / 3000 + stats.awards * 4 + stats.hits * 5 + averageQuality * .4);
 }
 
 export function buildSeasonStandings(playerStats: SeasonStats): SeasonStanding[] {
