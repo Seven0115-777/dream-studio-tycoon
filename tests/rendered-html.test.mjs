@@ -74,6 +74,12 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /每个制片年一次/);
   assert.match(page, /片方回款的10%/);
   assert.match(page, /选择本年项目来源/);
+  assert.match(page, /近三部作品档案/);
+  assert.match(page, /开发IP后题材固定/);
+  assert.match(page, /系列题材已锁定/);
+  assert.match(page, /IP作品必须保持母片题材/);
+  assert.match(page, /ipSelection\.route === "original" \|\| !selectedIpSource \? null : resolveIpGenre/);
+  assert.doesNotMatch(page, /sequelGenreLocked/);
   assert.match(ipSystem, /正统续集/);
   assert.match(ipSystem, /角色衍生/);
   assert.match(ipSystem, /重启 \/ 诗选/);

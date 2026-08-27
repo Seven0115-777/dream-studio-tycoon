@@ -46,7 +46,7 @@ export type IpProjectEffects = {
 export const ipRoutes: { id: Exclude<IpRouteId, "original">; name: string; summary: string; upside: string; pressure: string }[] = [
   { id: "sequel", name: "正统续集", summary: "延续主线和系列招牌，承接前作核心观众。", upside: "品牌开画最高 · 继承2项特性", pressure: "原班主演溢价12% · 前作评分形成期待" },
   { id: "spinoff", name: "角色衍生", summary: "从配角或世界观切入，允许更换叙事中心。", upside: "中等品牌开画 · 继承1项特性", pressure: "原班主演溢价5% · 需要重新建立认知" },
-  { id: "reboot", name: "重启 / 诗选", summary: "保留品牌伞，重做人物、时代或类型表达。", upside: "显著清理审美疲劳 · 无换角争议", pressure: "品牌开画最低 · 不继承旧特性" },
+  { id: "reboot", name: "重启 / 诗选", summary: "保留题材与品牌伞，重做人物、时代或风格表达。", upside: "显著清理审美疲劳 · 无换角争议", pressure: "品牌开画最低 · 不继承旧特性" },
 ];
 
 const clamp = (minimum: number, maximum: number, value: number) => Math.max(minimum, Math.min(maximum, value));
@@ -86,6 +86,10 @@ export function eligibleIpSources(history: FilmHistoryRecord[]) {
 export function findIpSource(history: FilmHistoryRecord[], sourceId: string | null) {
   if (!sourceId) return null;
   return normalizeFilmHistory(history).find((film) => film.id === sourceId) ?? null;
+}
+
+export function resolveIpGenre(source: FilmHistoryRecord | null, currentGenre: string) {
+  return source?.genre || currentGenre;
 }
 
 export function suggestIpTitle(source: FilmHistoryRecord, route: Exclude<IpRouteId, "original">) {

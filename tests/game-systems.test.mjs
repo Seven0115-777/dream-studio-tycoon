@@ -6,7 +6,7 @@ import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts
 import { evaluateScript, getScriptQuestionBank, getScriptQuestions, rewriteScript } from "../app/script-engine.ts";
 import { coreStylesByGenre, deriveScriptBuild, describeBeginnerBuildChange, describeBuildChange, describeCoreStyle, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, normalizeSequentialScriptProgress, resolveEnsembleCast, resolveEnsembleDownstream, scriptConnections, scriptQuestionState, summarizeScriptDownstream } from "../app/script-build-system.ts";
 import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, resolveProductionChain } from "../app/game-systems.ts";
-import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, normalizeFilmHistory, resolveIpProjectEffects } from "../app/ip-system.ts";
+import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, normalizeFilmHistory, resolveIpGenre, resolveIpProjectEffects } from "../app/ip-system.ts";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
 
 const releaseBase = {
@@ -582,6 +582,12 @@ test("build feedback follows the last changed answer and covers every visible ch
   const conflicted = { ...resonance, conflicts: ["表达冲突"] };
   assert.match(describeBuildChange(resonance, conflicted), /表达冲突增加/);
   assert.match(describeBuildChange(conflicted, resonance), /表达冲突化解/);
+});
+
+test("every IP route inherits its source genre and legacy films archive the current genre", () => {
+  assert.equal(resolveIpGenre(hitIpSource, "都市爱情"), "动作");
+  assert.equal(resolveIpGenre({ ...hitIpSource, genre: undefined }, "都市爱情"), "都市爱情");
+  assert.equal(resolveIpGenre(null, "犯罪悬疑"), "犯罪悬疑");
 });
 
 test("beginner feedback reveals one plain-language consequence only after commitment", () => {

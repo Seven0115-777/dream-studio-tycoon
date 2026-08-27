@@ -8,7 +8,7 @@ import { evolveDirectorMarket, evolveGenreMarket, type MarketDirector } from "./
 import { evaluateScript, getScriptQuestions, rewriteScript, type RewriteDirection, type ScriptReport } from "./script-engine";
 import { deriveScriptBuild, describeBeginnerBuildChange, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, normalizeSequentialScriptProgress, resolveEnsembleCast, resolveEnsembleDownstream, scriptQuestionState, summarizeScriptDownstream, type EnsembleCastId } from "./script-build-system";
 import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, resolveProductionChain, type AwardNomination, type GoalOutcome, type ProductionChoice } from "./game-systems";
-import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, findIpSource, ipRoutes, isIpEligible, normalizeFilmHistory, resolveIpProjectEffects, routeName, suggestIpTitle, type FilmHistoryRecord, type IpProjectSelection, type IpRouteId } from "./ip-system";
+import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, filmRecordId, findIpSource, ipRoutes, isIpEligible, normalizeFilmHistory, resolveIpGenre, resolveIpProjectEffects, routeName, suggestIpTitle, type FilmHistoryRecord, type IpProjectSelection, type IpRouteId } from "./ip-system";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, externalAgencyIncome, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
 
 type Genre = { name: string; icon: string; heat: number; color: string; heatChange?: number; marketNote?: string };
@@ -394,7 +394,15 @@ export default function Home() {
         });
         const restoredGenres = save.genreMarket?.length ? save.genreMarket : genres;
         const restoredDirectors = save.directorPool?.length ? save.directorPool : directors;
-        const restoredGenre = restoredGenres.find((item) => item.name === save.genreName) ?? restoredGenres[0];
+        let restoredHistory = normalizeFilmHistory(save.history ?? []);
+        let restoredIpSource = findIpSource(restoredHistory, save.ipSourceId ?? null);
+        const restoredIpActive = Boolean(restoredIpSource && save.ipRoute && save.ipRoute !== "original");
+        const restoredGenreName = restoredIpActive ? resolveIpGenre(restoredIpSource, save.genreName) : save.genreName;
+        if (restoredIpActive && restoredIpSource && !restoredIpSource.genre) {
+          restoredHistory = restoredHistory.map((film) => film.id === restoredIpSource?.id ? { ...film, genre: restoredGenreName } : film);
+          restoredIpSource = findIpSource(restoredHistory, save.ipSourceId ?? null);
+        }
+        const restoredGenre = restoredGenres.find((item) => item.name === restoredGenreName) ?? restoredGenres[0];
         const restoredQuestions = getScriptQuestions(restoredGenre.name, save.year);
         const restoredScriptProgress = normalizeSequentialScriptProgress(restoredQuestions.map((question) => question.id), save.scriptAnswers ?? {}, save.scriptCommittedCount);
         setYear(save.year);
@@ -439,9 +447,7 @@ export default function Home() {
         setRookieAlumniIds(save.rookieAlumniIds ?? [...new Set([...(save.signedTalents ?? []).filter((contract) => contract.origin === "rookie").map((contract) => contract.actorId), ...restoredPool.filter((actor) => actor.id >= 100).map((actor) => actor.id)])]);
         setExpiryReminderDismissedYear(save.expiryReminderDismissedYear ?? null);
         setProjectCostPaid(save.projectCostPaid ?? 0);
-        const restoredHistory = normalizeFilmHistory(save.history ?? []);
         setHistory(restoredHistory);
-        const restoredIpSource = findIpSource(restoredHistory, save.ipSourceId ?? null);
         setIpSelection(restoredIpSource && save.ipRoute && save.ipRoute !== "original" ? { route: save.ipRoute, sourceId: restoredIpSource.id ?? null } : { route: "original", sourceId: null });
       } catch {
         window.localStorage.removeItem(SAVE_KEY);
@@ -557,6 +563,7 @@ export default function Home() {
   const scriptScore = scriptReport?.score ?? 0;
   const scriptBuild = scriptReport?.build ?? scriptBuildPreview;
   const scriptEffects = getScriptDownstream(scriptReport);
+  const recentFilmRecords = useMemo(() => normalizeFilmHistory(history), [history]);
   const availableIpSources = useMemo(() => eligibleIpSources(history), [history]);
   const selectedIpSource = useMemo(() => findIpSource(history, ipSelection.sourceId), [history, ipSelection.sourceId]);
   const ipEffects = useMemo(() => resolveIpProjectEffects(history, ipSelection, { genre: genre.name, castIds: cast.map((actor) => actor.id), coreStyleId: scriptBuild.core?.id }), [cast, genre.name, history, ipSelection, scriptBuild.core?.id]);
@@ -673,9 +680,13 @@ export default function Home() {
   }
 
   function chooseIpSource(source: FilmHistoryRecord) {
+    const lockedGenreName = resolveIpGenre(source, genre.name);
+    if (!source.genre) {
+      setHistory((current) => current.map((film, index) => filmRecordId(film, index) === source.id ? { ...film, genre: lockedGenreName } : film));
+    }
     setIpSelection({ route: "sequel", sourceId: source.id ?? null });
     setTitle(suggestIpTitle(source, "sequel"));
-    const sourceGenre = genreMarket.find((item) => item.name === source.genre);
+    const sourceGenre = genreMarket.find((item) => item.name === lockedGenreName);
     if (sourceGenre) setGenre(sourceGenre);
     resetCreativeProjectState();
   }
@@ -684,10 +695,9 @@ export default function Home() {
     if (!selectedIpSource) return;
     setIpSelection({ route, sourceId: selectedIpSource.id ?? null });
     setTitle(suggestIpTitle(selectedIpSource, route));
-    if (route === "sequel") {
-      const sourceGenre = genreMarket.find((item) => item.name === selectedIpSource.genre);
-      if (sourceGenre) setGenre(sourceGenre);
-    }
+    const lockedGenreName = resolveIpGenre(selectedIpSource, genre.name);
+    const sourceGenre = genreMarket.find((item) => item.name === lockedGenreName);
+    if (sourceGenre) setGenre(sourceGenre);
     resetCreativeProjectState();
   }
 
@@ -1189,18 +1199,20 @@ export default function Home() {
               </>}
               {year > 1 && <div className="market-cycle-banner"><div><span>YEAR {year} MARKET</span><b>年度电影市场重新洗牌</b></div><dl><dt>当前最热</dt><dd>{marketLeader.name} · {marketLeader.heat}</dd><dt>上升最快</dt><dd>{marketRiser.name} · {(marketRiser.heatChange ?? 0) >= 0 ? "+" : ""}{marketRiser.heatChange ?? 0}</dd><dt>可约导演</dt><dd>{availableDirectors.length} / {directorPool.length} 位</dd></dl></div>}
               <SectionTitle number="IP" title="选择本年项目来源" note="原创立项，或延续近三部作品形成跨年度系列" />
+              {!!recentFilmRecords.length && <div className="ip-history-list"><header><span>RECENT FILMS</span><b>近三部作品档案</b></header>{recentFilmRecords.map((film, index) => <article key={film.id}><span>{index + 1}</span><div><b>《{film.title}》</b><p>{film.genre ? `${film.genre} · 开发IP后题材固定` : "旧档未记录题材 · 首次开发时归档"}</p></div><i className={isIpEligible(film) ? "eligible" : "locked"}>{isIpEligible(film) ? "可开发IP" : "尚未达标"}</i></article>)}</div>}
               <div className="ip-source-grid">
                 <button type="button" className={ipSelection.route === "original" ? "selected" : ""} aria-pressed={ipSelection.route === "original"} onClick={chooseOriginalProject}><span>NEW ORIGINAL</span><b>开发原创项目</b><p>不继承品牌加成，也不承担前作期待与系列疲劳。</p><i>{ipSelection.route === "original" ? "当前项目" : "选择原创"}</i></button>
-                {availableIpSources.map((film) => <button type="button" key={film.id} className={ipSelection.sourceId === film.id ? "selected" : ""} aria-pressed={ipSelection.sourceId === film.id} onClick={() => chooseIpSource(film)}><span>IP ASSET · {film.seriesEntry ?? 1} 部</span><b>《{film.seriesTitle ?? film.title}》</b><p>品牌热度 {film.brandHeat} · {film.score === undefined ? "旧片评分已折算" : `前作评分 ${film.score.toFixed(1)}`} · 疲劳 {film.fatigue ?? 0}</p><i>{ipSelection.sourceId === film.id ? "已选为系列母片" : "开发该IP"}</i></button>)}
+                {availableIpSources.map((film) => <button type="button" key={film.id} className={ipSelection.sourceId === film.id ? "selected" : ""} aria-pressed={ipSelection.sourceId === film.id} onClick={() => chooseIpSource(film)}><span>IP ASSET · {film.seriesEntry ?? 1} 部</span><b>《{film.seriesTitle ?? film.title}》</b><p>题材 {film.genre ?? "待归档"} · 品牌热度 {film.brandHeat} · {film.score === undefined ? "旧片评分已折算" : `前作评分 ${film.score.toFixed(1)}`} · 疲劳 {film.fatigue ?? 0}</p><i>{ipSelection.sourceId === film.id ? "已选为系列母片" : "开发该IP"}</i></button>)}
               </div>
               {!availableIpSources.length && <div className="ip-empty-note"><span>待</span><p>首部电影达到评分8.0、票房5.5亿、回本1.35倍或获得奖项后，将在下一年解锁IP开发。</p></div>}
-              {selectedIpSource && ipSelection.route !== "original" && <div className="ip-route-panel"><header><div><span>SERIES DEVELOPMENT</span><b>《{selectedIpSource.seriesTitle ?? selectedIpSource.title}》第 {(selectedIpSource.seriesEntry ?? 1) + 1} 部</b></div><p>品牌热度 {selectedIpSource.brandHeat} · 当前疲劳 {selectedIpSource.fatigue ?? 0}</p></header><div>{ipRoutes.map((route) => <button type="button" key={route.id} className={ipSelection.route === route.id ? "selected" : ""} aria-pressed={ipSelection.route === route.id} onClick={() => chooseIpRoute(route.id)}><span>{route.name}</span><b>{route.summary}</b><small>{route.upside}</small><i>{route.pressure}</i></button>)}</div><p className="ip-route-tip">进入选角后，原班主演回归人数、当前核心流派和题材变化会实时更新系列收益与疲劳。</p></div>}
+              {selectedIpSource && ipSelection.route !== "original" && <div className="ip-route-panel"><header><div><span>SERIES DEVELOPMENT</span><b>《{selectedIpSource.seriesTitle ?? selectedIpSource.title}》第 {(selectedIpSource.seriesEntry ?? 1) + 1} 部</b></div><p>题材 {resolveIpGenre(selectedIpSource, genre.name)} · 品牌热度 {selectedIpSource.brandHeat} · 当前疲劳 {selectedIpSource.fatigue ?? 0}</p></header><div>{ipRoutes.map((route) => <button type="button" key={route.id} className={ipSelection.route === route.id ? "selected" : ""} aria-pressed={ipSelection.route === route.id} onClick={() => chooseIpRoute(route.id)}><span>{route.name}</span><b>{route.summary}</b><small>{route.upside}</small><i>{route.pressure}</i></button>)}</div><p className="ip-route-tip">进入选角后，原班主演回归人数和当前核心流派会实时更新系列收益与疲劳；母片题材不会改变。</p></div>}
               <SectionTitle number="委" title="选择年度制片委托" note="三选一，确认后锁定到本片结算" />
               <div className="annual-goal-grid">{annualGoalCandidates.map((goal) => <button type="button" key={goal.id} disabled={annualGoalLocked} className={annualGoalId === goal.id ? "selected" : ""} onClick={() => setAnnualGoalId(goal.id)}><header><span>{"★".repeat(goal.stars)}</span><b>{goal.title}</b></header><p>{goal.description}</p><small>奖励 · ¥{money(goal.reward.cash)} / {goal.reward.xp} XP / {goal.reward.reputation} 声望</small>{annualGoalId === goal.id && <i>{annualGoalLocked ? "目标已锁定" : "已选择 · 开始后锁定"}</i>}</button>)}</div>
               <SectionTitle number="1" title="片名与电影题材" note="市场热度会随档期与年份变化" />
               <label className="title-input"><span>项目片名</span><input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={12} /></label>
+              {selectedIpSource && ipSelection.route !== "original" && <div className="ip-genre-lock"><span>锁</span><div><b>系列题材已锁定：{resolveIpGenre(selectedIpSource, genre.name)}</b><p>IP作品必须保持母片题材；切回“原创项目”后才可更换。</p></div></div>}
               <div className="genre-grid">
-                {genreMarket.map((item) => { const sequelGenreLocked = ipSelection.route === "sequel" && Boolean(selectedIpSource?.genre) && item.name !== selectedIpSource?.genre; return <button key={item.name} disabled={sequelGenreLocked} className={`genre-card ${genre.name === item.name ? "selected" : ""}`} onClick={() => { setGenre(item); resetCreativeProjectState(); }} aria-pressed={genre.name === item.name}>
+                {genreMarket.map((item) => { const lockedIpGenre = ipSelection.route === "original" || !selectedIpSource ? null : resolveIpGenre(selectedIpSource, genre.name); const ipGenreLocked = Boolean(lockedIpGenre) && item.name !== lockedIpGenre; return <button key={item.name} disabled={ipGenreLocked} className={`genre-card ${genre.name === item.name ? "selected" : ""}`} onClick={() => { setGenre(item); resetCreativeProjectState(); }} aria-pressed={genre.name === item.name}>
                   <span className="genre-icon" style={{ background: genre.name === item.name ? item.color : undefined }}>{item.icon}</span><strong>{item.name}</strong><small>市场热度 · {item.marketNote ?? "本年行情"}</small><div className="heat-row"><div className="heat"><i style={{ width: `${item.heat}%`, background: item.color }} /></div><b>{item.heat}</b></div>{item.heatChange !== undefined && <span className={`market-shift ${item.heatChange >= 0 ? "up" : "down"}`}>{item.heatChange >= 0 ? "↑" : "↓"}{Math.abs(item.heatChange)}</span>}{genre.name === item.name && <span className="picked">已选择</span>}
                 </button>; })}
               </div>
