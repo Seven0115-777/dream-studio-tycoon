@@ -141,7 +141,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /choiceState === "waiting" \? "等待前序" : choiceState === "locked" \? "已锁定" : selected \? "可改选" : "可选择"/);
   assert.match(page, /disabled=\{disabled\} aria-pressed=\{selected === choice\}/);
   assert.match(page, /const \[productionLocked, setProductionLocked\] = useState\(false\)/);
-  assert.match(page, /setProductionLocked\(true\); commitProjectCost/);
+  assert.match(page, /setProductionLocked\(true\);\s+commitProjectCost/);
   assert.match(page, /setProductionLocked\(save\.productionLocked \?\? restoredStage >= 4\)/);
   assert.match(page, /年度制片委托/);
   assert.match(page, /金幕奖提名与获奖/);
@@ -208,6 +208,9 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /同期竞品/);
   assert.match(page, /预选一个上映档期/);
   assert.match(page, /候选可反复比较，最终只确认一个档期/);
+  assert.match(page, /拍摄延期，已错过/);
+  assert.match(page, /国庆档始终保留/);
+  assert.match(page, /disabled=\{!status\.available\}/);
   assert.match(page, /当前预选：\$\{slot\.name\}同期竞品/);
   assert.match(page, /aria-pressed=\{selected\}/);
   assert.match(page, /确认\$\{slot\.name\}上映，揭晓票房/);
@@ -221,6 +224,9 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /最终观众评分最高只能达到6\.5/);
   assert.match(mobileUi, /export function GameHeader/);
   assert.match(mobileUi, /制片第 \{year\} 年/);
+  assert.match(mobileUi, /本项目投资/);
+  assert.match(page, /projectInvestment=\{stage > 0 \? money\(projectCostPaid\) : null\}/);
+  assert.match(page, /window\.crypto\.getRandomValues/);
   assert.match(mobileUi, /export function StageProgress/);
   assert.match(mobileUi, /export function ActionBar/);
   assert.match(layout, /viewportFit:\s*"cover"/);
@@ -234,6 +240,8 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(css, /\.event-card p \{[^}]*color: #4a5558;[^}]*-webkit-text-fill-color: #4a5558/);
   assert.match(css, /\.goal-result\.complete small, \.goal-result\.complete b, \.goal-result\.complete p, \.goal-result\.complete i \{ color: #173a32/);
   assert.match(css, /\.goal-result\.complete > strong \{ color: #d94b25/);
+  assert.match(css, /\.release-delay-warning/);
+  assert.match(css, /\.slot-grid button\.missed/);
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
   assert.match(css, /\.room-operation-shell \.project-board \{ width: calc\(100% - 24px\); margin: 12px auto;/);
   assert.match(economy, /buildReleaseModel/);
@@ -249,6 +257,8 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(gameSystems, /export function judgeAwards/);
   assert.match(gameSystems, /export function awardWinCap/);
   assert.match(gameSystems, /export function calculateLibraryIncome/);
+  assert.match(gameSystems, /export function availableReleaseSlotIds/);
+  assert.match(gameSystems, /export function releaseSlotStatus/);
   assert.match(economy, /export function scheduleRiskMultiplier/);
   assert.match(economy, /export function yearlyOperatingCost/);
   assert.match(economy, /export function settleAnnualCompanyCash/);

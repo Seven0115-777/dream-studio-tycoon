@@ -131,7 +131,7 @@ function pickRookie(pool: RookieCandidate[], seed: string, usedIds: Set<number>)
   return available[hash(seed) % available.length];
 }
 
-export function buildRookieMarket(year: number, signedIds: ReadonlySet<number> = new Set(), refreshed = false) {
+export function buildRookieMarket(year: number, signedIds: ReadonlySet<number> = new Set(), refreshed = false, seed: number | null = null) {
   const available = rookieCandidates.filter((candidate) => !signedIds.has(candidate.id));
   const byRarity = (rarity: RookieRarity) => available.filter((candidate) => candidate.rarity === rarity);
   const usedIds = new Set<number>();
@@ -146,22 +146,24 @@ export function buildRookieMarket(year: number, signedIds: ReadonlySet<number> =
   };
 
   if (refreshed) {
-    const rareRarity: RookieRarity = hash(`${year}:rookie-refresh-rarity`) % 4 === 0 ? "red" : "gold";
+    const refreshSeed = seed ?? year;
+    const rareRarity: RookieRarity = hash(`${refreshSeed}:rookie-refresh-rarity`) % 4 === 0 ? "red" : "gold";
     const alternateRarity: RookieRarity = rareRarity === "gold" ? "red" : "gold";
-    const rareCandidate = pickRookie(byRarity(rareRarity), `${year}:rookie-refresh-rare`, usedIds)
-      ?? pickRookie(byRarity(alternateRarity), `${year}:rookie-refresh-rare-fallback`, usedIds);
+    const rareCandidate = pickRookie(byRarity(rareRarity), `${refreshSeed}:rookie-refresh-rare`, usedIds)
+      ?? pickRookie(byRarity(alternateRarity), `${refreshSeed}:rookie-refresh-rare-fallback`, usedIds);
     if (rareCandidate) {
       usedIds.add(rareCandidate.id);
       market.push(rareCandidate);
     }
-    for (let slot = 1; slot < 4; slot += 1) addCandidate("ordinary", `${year}:rookie-refresh:${slot}`);
+    for (let slot = 1; slot < 4; slot += 1) addCandidate("ordinary", `${refreshSeed}:rookie-refresh:${slot}`);
     return market;
   }
 
-  const naturalRoll = hash(`${year}:rookie-market-rarity`) % 100;
+  const naturalSeed = seed === null ? `${year}` : `${seed}:${year}`;
+  const naturalRoll = hash(`${naturalSeed}:rookie-market-rarity`) % 100;
   const naturalRare: RookieRarity | null = naturalRoll < 90 ? null : naturalRoll < 98 ? "gold" : "red";
-  if (naturalRare) addCandidate(naturalRare, `${year}:rookie-market-rare:${naturalRare}`);
-  for (let slot = market.length; slot < 4; slot += 1) addCandidate("ordinary", `${year}:rookie-market:${slot}:ordinary`);
+  if (naturalRare) addCandidate(naturalRare, `${naturalSeed}:rookie-market-rare:${naturalRare}`);
+  for (let slot = market.length; slot < 4; slot += 1) addCandidate("ordinary", `${naturalSeed}:rookie-market:${slot}:ordinary`);
   return market;
 }
 

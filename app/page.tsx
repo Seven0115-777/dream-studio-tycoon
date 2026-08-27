@@ -8,7 +8,7 @@ import { evolveDirectorMarket, evolveGenreMarket, type MarketDirector } from "./
 import { evaluateScript, getScriptQuestions, rewriteScript, type RewriteDirection, type ScriptReport } from "./script-engine";
 import { deriveScriptBuild, describeBeginnerBuildChange, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, normalizeSequentialScriptProgress, resolveEnsembleCast, resolveEnsembleDownstream, scriptQuestionState, summarizeScriptDownstream, type EnsembleCastId } from "./script-build-system";
 import { addFilmToSeason, buildSeasonStandings, defaultPoliciesForPath, emptySeasonStats, marketEraForYear, policiesForPath, resolveMarketEraEffects, resolveStudioStrategy, rivalGenrePressure, rivalPlansForYear, seasonResultTitle, strategyLevel, studioPathXpGain, studioPaths, summarizeStrategyEffects, upcomingMarketEra, type SeasonArchiveRecord, type SeasonStats, type StudioPathId } from "./studio-strategy-system";
-import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, resolveProductionChain, type AwardNomination, type GoalOutcome, type ProductionChoice } from "./game-systems";
+import { availableReleaseSlotIds, awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, releaseSlotStatus, resolveProductionChain, type AwardNomination, type GoalOutcome, type ProductionChoice, type ReleaseSlotId } from "./game-systems";
 import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, filmRecordId, findIpSource, ipRoutes, isIpEligible, normalizeFilmHistory, resolveIpGenre, resolveIpProjectEffects, routeName, suggestIpTitle, type FilmHistoryRecord, type IpProjectSelection, type IpRouteId } from "./ip-system";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, externalAgencyIncome, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
 
@@ -27,6 +27,11 @@ type PortraitGroup = "director" | "actor" | "rookie";
 
 const ASSET_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const assetUrl = (path: string) => `${ASSET_BASE}${path}`;
+const createRandomSeed = () => {
+  const randomValue = new Uint32Array(1);
+  window.crypto.getRandomValues(randomValue);
+  return randomValue[0];
+};
 const mobileSceneAssets = [
   "studio-hub-mobile-v1.webp",
   "project-room-mobile-v1.webp",
@@ -76,6 +81,8 @@ type LocalGameSave = {
   actorHonors?: Record<number, string[]>;
   investmentClaimedYear?: number | null;
   rookieRefreshYear?: number | null;
+  rookieRefreshSeed?: number | null;
+  rookieMarketSeed?: number | null;
   rookieAlumniIds?: number[];
   expiryReminderDismissedYear?: number | null;
   projectCostPaid?: number;
@@ -148,7 +155,7 @@ const actors: Actor[] = [
   { id: 24, name: "唐薇", avatar: "薇", gender: "女", acting: 92, appeal: 81, fee: 900, genres: ["都市爱情", "历史传记"], tag: "文艺片缪斯" },
 ];
 
-const slots = [
+const slots: { id: ReleaseSlotId; name: string; date: string; boost: number; competition: string; note: string }[] = [
   { id: "spring", name: "春节档", date: "大年初一", boost: 1.28, competition: "激烈", note: "观影需求旺盛，喜剧与大片加成" },
   { id: "may", name: "五一档", date: "5月1日", boost: 1.08, competition: "适中", note: "短假期，人群覆盖均衡" },
   { id: "summer", name: "暑期档", date: "7月18日", boost: 1.18, competition: "较高", note: "年轻观众活跃，类型片强势" },
@@ -368,6 +375,8 @@ export default function Home() {
   const [actorHonors, setActorHonors] = useState<Record<number, string[]>>({});
   const [investmentClaimedYear, setInvestmentClaimedYear] = useState<number | null>(null);
   const [rookieRefreshYear, setRookieRefreshYear] = useState<number | null>(null);
+  const [rookieRefreshSeed, setRookieRefreshSeed] = useState<number | null>(null);
+  const [rookieMarketSeed, setRookieMarketSeed] = useState<number | null>(null);
   const [rookieAlumniIds, setRookieAlumniIds] = useState<number[]>([]);
   const [expiryReminderDismissedYear, setExpiryReminderDismissedYear] = useState<number | null>(null);
   const [projectCostPaid, setProjectCostPaid] = useState(0);
@@ -393,7 +402,10 @@ export default function Home() {
     queueMicrotask(() => {
       try {
         const raw = window.localStorage.getItem(SAVE_KEY);
-        if (!raw) return;
+        if (!raw) {
+          setRookieMarketSeed(createRandomSeed());
+          return;
+        }
         const save = JSON.parse(raw) as LocalGameSave;
         if (save.version !== 1) return;
         const restoredPool = (save.actorPool?.length ? save.actorPool : actors).map((actor) => {
@@ -459,6 +471,8 @@ export default function Home() {
         setActorHonors(save.actorHonors ?? {});
         setInvestmentClaimedYear(save.investmentClaimedYear ?? null);
         setRookieRefreshYear(save.rookieRefreshYear ?? null);
+        setRookieRefreshSeed(save.rookieRefreshSeed ?? null);
+        setRookieMarketSeed(save.rookieMarketSeed ?? createRandomSeed());
         setRookieAlumniIds(save.rookieAlumniIds ?? [...new Set([...(save.signedTalents ?? []).filter((contract) => contract.origin === "rookie").map((contract) => contract.actorId), ...restoredPool.filter((actor) => actor.id >= 100).map((actor) => actor.id)])]);
         setExpiryReminderDismissedYear(save.expiryReminderDismissedYear ?? null);
         setProjectCostPaid(save.projectCostPaid ?? 0);
@@ -548,6 +562,8 @@ export default function Home() {
       actorHonors,
       investmentClaimedYear,
       rookieRefreshYear,
+      rookieRefreshSeed,
+      rookieMarketSeed,
       rookieAlumniIds,
       expiryReminderDismissedYear,
       projectCostPaid,
@@ -563,7 +579,7 @@ export default function Home() {
       history,
     };
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  }, [activePolicyIds, actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, deals, director?.id, directorPool, ensembleCastId, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, ipSelection.route, ipSelection.sourceId, productionChoices, productionLocked, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieRefreshYear, saveReady, scriptAnswers, scriptCommittedCount, scriptReport, seasonArchive, seasonStats, signedTalents, slot.id, stage, studioFocusGenres, studioPathCommitted, studioPathId, studioPathXp, studioXp, title, year]);
+  }, [activePolicyIds, actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, deals, director?.id, directorPool, ensembleCastId, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, ipSelection.route, ipSelection.sourceId, productionChoices, productionLocked, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieMarketSeed, rookieRefreshSeed, rookieRefreshYear, saveReady, scriptAnswers, scriptCommittedCount, scriptReport, seasonArchive, seasonStats, signedTalents, slot.id, stage, studioFocusGenres, studioPathCommitted, studioPathId, studioPathXp, studioXp, title, year]);
 
   const studioLevel = Math.min(10, 1 + Math.floor(studioXp / 180));
   const studioXpProgress = studioXp % 180;
@@ -587,7 +603,7 @@ export default function Home() {
   const availableDirectors = useMemo(() => directorPool.filter((item) => item.available !== false), [directorPool]);
   const marketLeader = useMemo(() => [...genreMarket].sort((first, second) => second.heat - first.heat)[0], [genreMarket]);
   const marketRiser = useMemo(() => [...genreMarket].sort((first, second) => (second.heatChange ?? 0) - (first.heatChange ?? 0))[0], [genreMarket]);
-  const rookieMarket = useMemo(() => buildRookieMarket(year, unavailableRookieIds, rookieRefreshYear === year), [rookieRefreshYear, unavailableRookieIds, year]);
+  const rookieMarket = useMemo(() => buildRookieMarket(year, unavailableRookieIds, rookieRefreshYear === year, rookieRefreshYear === year ? rookieRefreshSeed : rookieMarketSeed), [rookieMarketSeed, rookieRefreshSeed, rookieRefreshYear, unavailableRookieIds, year]);
   const scriptQuestions = useMemo(() => getScriptQuestions(genre.name, year), [genre.name, year]);
   const scriptBuildPreview = useMemo(() => deriveScriptBuild(scriptAnswers, scriptQuestions as Parameters<typeof deriveScriptBuild>[1], genre.name), [genre.name, scriptAnswers, scriptQuestions]);
   const annualGoalCandidates = useMemo(() => generateAnnualGoals(year, genreMarket), [genreMarket, year]);
@@ -630,6 +646,9 @@ export default function Home() {
   const totalBeforeRelease = currentBudgetCost + talentCost;
   const productionChain = useMemo(() => generateProductionChain(cast.map((actor) => actor.id), year, { genre: genre.name, budget: budget.name }), [budget.name, cast, genre.name, year]);
   const productionTotals = useMemo(() => resolveProductionChain(productionChain, productionChoices), [productionChain, productionChoices]);
+  const availableSlotIds = availableReleaseSlotIds(productionTotals.scheduleRisk);
+  const missedReleaseSlots = slots.filter((item) => !availableSlotIds.includes(item.id));
+  const selectedSlotAvailable = availableSlotIds.includes(slot.id);
   const scheduleEfficiency = scheduleRiskMultiplier(productionTotals.scheduleRisk);
   const currentEventCost = Math.round(productionTotals.cost * industryCostIndex);
   const overheadCost = Math.round(totalBeforeRelease * .12);
@@ -776,6 +795,13 @@ export default function Home() {
     setCash((value) => value - paymentDelta);
     setProjectCostPaid(targetCost);
     moveToStage(nextStage);
+  }
+
+  function completeProduction() {
+    const nextAvailableSlot = slots.find((item) => availableSlotIds.includes(item.id)) ?? slots[slots.length - 1];
+    if (!selectedSlotAvailable) setSlot(nextAvailableSlot);
+    setProductionLocked(true);
+    commitProjectCost(totalBeforeRelease + overheadCost + currentEventCost + rewriteCost, 4);
   }
 
   function requestActor(actor: Actor) {
@@ -975,6 +1001,13 @@ export default function Home() {
     setCash((value) => value + annualInvestment);
   }
 
+  function refreshRookieMarket() {
+    if (rookieRefreshYear === year) return;
+    setRookieRefreshSeed(createRandomSeed());
+    setRookieRefreshYear(year);
+    setCompanyNotice("星探刷新完成：名单已按本次独立随机结果生成并写入存档，本年度不可再次刷新。");
+  }
+
   function showScriptPaper(report: ScriptReport | null) {
     setScriptReport(report);
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
@@ -1019,7 +1052,7 @@ export default function Home() {
   }
 
   function simulate() {
-    if (!director || cast.length !== 2) return;
+    if (!director || cast.length !== 2 || !selectedSlotAvailable) return;
     const outstandingProjectCost = projectPaymentDelta(totalCost, projectCostPaid);
     if (outstandingProjectCost > cash) return;
     const acting = ensemblePerformance?.acting ?? leadActing;
@@ -1036,7 +1069,7 @@ export default function Home() {
     const { weekDays: days, weekScores, monthDays, weekGross, tailGross, gross, studioRevenue, investorShare, successBonus, profit, breakEvenGross } = release;
     const audience = Math.round(gross * 10000 / 42);
     const trend = days[6] > days[0] * 1.05 ? "口碑逆袭" : days[1] > days[0] && days[6] > days[0] * .72 ? "稳健长线" : days[1] < days[0] * .9 && days[6] < days[0] * .55 ? "高开低走" : "正常回落";
-    const scheduleNote = productionTotals.scheduleRisk > 0 ? ` 片场累计 +${productionTotals.scheduleRisk} 档期风险，发行效率降至 ${Math.round(release.scheduleEfficiency * 100)}%。` : " 片场档期风险已控制，不产生额外发行增益。";
+    const scheduleNote = productionTotals.scheduleRisk > 0 ? ` 片场累计 +${productionTotals.scheduleRisk} 档期风险，已错过 ${missedReleaseSlots.map((item) => item.name).join("、") || "无"}，发行效率降至 ${Math.round(release.scheduleEfficiency * 100)}%。` : " 片场档期风险已控制，不产生额外发行增益。";
     const ipExpectationNote = ipEffects.expectedScore === null ? "" : expectationDelta > 0 ? ` 成片评分超过系列期待 ${ipEffects.expectedScore.toFixed(1)}，IP口碑 +1。` : expectationDelta < 0 ? ` 成片评分未达到系列期待 ${ipEffects.expectedScore.toFixed(1)}，IP口碑 ${expectationDelta}。` : ` 成片评分基本兑现系列期待 ${ipEffects.expectedScore.toFixed(1)}。`;
     const trendNote = `${trend === "口碑逆袭" ? "高口碑抵消同档竞争，路人推荐推动持续增量。" : trend === "高开低走" ? "明星与宣发拉高首日，但剧本口碑未能承接热度。" : trend === "稳健长线" ? "内容、开画与同档竞争较为均衡，首周维持稳定排片。" : "市场热度按常规节奏释放，后续表现由口碑与竞品共同决定。"}${scheduleNote}${ipExpectationNote}`;
     const awardInput = { year, quality, directorSkill: director.skill, fit, acting: leadActing, chemistry: performanceCoordination, audienceScore: roundedScore, pictureBonus: ensembleDownstream.pictureBonus + studioStrategy.pictureAwardBonus + eraEffects.pictureAwardBonus, directorBonus: ensembleDownstream.directorBonus + studioStrategy.directorAwardBonus + eraEffects.directorAwardBonus, actingBonus: scriptEffects.awardActing + studioStrategy.actingAwardBonus + eraEffects.actingAwardBonus, chemistryBonus: ensemblePerformance?.awardBonus ?? 0 };
@@ -1206,6 +1239,8 @@ export default function Home() {
     setRevealedDays(0);
     setAutoPlay(true);
     setCompanyNotice("");
+    setRookieRefreshYear(null);
+    setRookieRefreshSeed(null);
     setExpiryReminderDismissedYear(null);
     setUtilityRoom(null);
     setWorkspaceOpen(false);
@@ -1215,7 +1250,7 @@ export default function Home() {
 
   return (
     <main className="app-shell">
-      <GameHeader level={studioLevel} year={year} cash={money(cash)} reputation={reputation} xpProgress={studioXpProgress} />
+      <GameHeader level={studioLevel} year={year} cash={money(cash)} projectInvestment={stage > 0 ? money(projectCostPaid) : null} reputation={reputation} xpProgress={studioXpProgress} />
       <StageProgress stage={stage} labels={stageLabels} />
       {inStudioHub ? <section className="studio-hub" aria-label="造梦片场公司总部">
         <div className="studio-hub__shade" />
@@ -1402,7 +1437,7 @@ export default function Home() {
               <p className="production-choice-rule">当前最新阶段可反复改选；选择下一阶段后，前一阶段锁定。后期在点击“完成制作并送审”前仍可调整。</p>
               <div className="production-chain-summary"><div><span>已处理</span><b>{productionTotals.resolved}/3</b></div><div><span>累计质量</span><b>{productionTotals.quality >= 0 ? "+" : ""}{productionTotals.quality}</b></div><div><span>市场热度</span><b>{productionTotals.market >= 0 ? "+" : ""}{productionTotals.market}</b></div><div><span>士气 / 档期风险</span><b>{productionTotals.morale >= 0 ? "+" : ""}{productionTotals.morale} / {productionTotals.scheduleRisk >= 0 ? "+" : ""}{productionTotals.scheduleRisk}</b></div></div>
               <div className="event-chain">{productionChain.map((productionEvent, index) => { const choiceState = productionLocked ? "locked" : getProductionChoiceState(productionChoices, index); const selected = productionChoices[index]; const disabled = choiceState !== "editable"; const status = choiceState === "waiting" ? "等待前序" : choiceState === "locked" ? "已锁定" : selected ? "可改选" : "可选择"; return <div className={`event-card ${disabled ? "locked" : ""}`} key={productionEvent.id}><header><span>0{index + 1}</span><div><small>{productionEvent.stage}阶段</small><b>{productionEvent.title}</b></div><i>{status}</i></header><p>{productionEvent.description}</p>{index > 0 && productionTotals.notes[index - 1] && <div className="causal-note">因上一阶段：{productionTotals.notes[index - 1]}</div>}<div className="event-options">{(["safe", "bold"] as const).map((choice) => <button type="button" disabled={disabled} aria-pressed={selected === choice} key={choice} className={selected === choice ? "selected" : ""} onClick={() => setProductionChoices((current) => current.map((value, choiceIndex) => choiceIndex === index ? choice : value))}><b>{productionEvent[choice].label}</b><small>{productionEvent[choice].hint}{productionEvent[choice].cost ? ` · 基础成本 ¥${money(Math.round(productionEvent[choice].cost * industryCostIndex))}` : ""}</small><em>{productionEvent[choice].consequence}</em></button>)}</div></div>; })}</div>
-              <ActionBar label={`${budget.name} · ${genre.name}`} detail={`制作与主创 ¥${money(totalBeforeRelease)} · 完片保险 ¥${money(overheadCost)}${currentEventCost ? ` · 事件追加 ¥${money(currentEventCost)}` : ""}${rewriteCost ? ` · 改稿 ¥${money(rewriteCost)}` : ""}`} button="完成制作并送审" disabled={productionTotals.resolved < 3 || projectPaymentDelta(totalBeforeRelease + overheadCost + currentEventCost + rewriteCost, projectCostPaid) > cash} onClick={() => { setProductionLocked(true); commitProjectCost(totalBeforeRelease + overheadCost + currentEventCost + rewriteCost, 4); }} back={() => moveToStage(2)} />
+              <ActionBar label={`${budget.name} · ${genre.name}`} detail={`制作与主创 ¥${money(totalBeforeRelease)} · 完片保险 ¥${money(overheadCost)}${currentEventCost ? ` · 事件追加 ¥${money(currentEventCost)}` : ""}${rewriteCost ? ` · 改稿 ¥${money(rewriteCost)}` : ""}`} button="完成制作并送审" disabled={productionTotals.resolved < 3 || projectPaymentDelta(totalBeforeRelease + overheadCost + currentEventCost + rewriteCost, projectCostPaid) > cash} onClick={completeProduction} back={() => moveToStage(2)} />
             </>
           )}
 
@@ -1410,7 +1445,8 @@ export default function Home() {
             <>
               <PageHead code="RELEASE PLAN" title="好电影，还需要一个" accent="好时机。" sub="先预选一个上映档期，可反复比较候选；上映时只会确认当前预选档期。" stamp="待定档" />
               <SectionTitle number="1" title="预选一个上映档期" note="候选可反复比较，最终只确认一个档期" />
-              <div className="slot-grid">{slots.map((item) => { const selected = slot.id === item.id; return <button type="button" key={item.id} className={selected ? "selected" : ""} onClick={() => setSlot(item)} aria-pressed={selected}><span>{item.date}</span><strong>{item.name}</strong><small>{item.note}</small><i>{selected ? "已预选" : "点击预选"} · 竞争：{item.competition}</i></button>; })}</div>
+              {missedReleaseSlots.length > 0 && <div className="release-delay-warning"><span>延</span><div><b>拍摄延期，已错过 {missedReleaseSlots.map((item) => item.name).join("、")}</b><p>累计档期风险 +{Math.max(0, productionTotals.scheduleRisk)}；延期越严重，可选上映窗口越晚。国庆档始终保留。</p></div></div>}
+              <div className="slot-grid">{slots.map((item) => { const selected = slot.id === item.id; const status = releaseSlotStatus(item.id, productionTotals.scheduleRisk); return <button type="button" key={item.id} disabled={!status.available} className={`${selected ? "selected" : ""}${status.available ? "" : " missed"}`} onClick={() => setSlot(item)} aria-pressed={selected}><span>{item.date}</span><strong>{item.name}</strong><small>{status.available ? item.note : status.reason}</small><i>{status.available ? `${selected ? "已预选" : "点击预选"} · 竞争：${item.competition}` : "因延期已错过"}</i></button>; })}</div>
               <SectionTitle number="竞" title={`当前预选：${slot.name}同期竞品`} note={`${slotCompetitors.length} 部影片已提前锁定核心排片`} />
               <div className="competition-summary"><div><span>预计观众分流</span><b>-{Math.round(competitionPressure * 100)}%</b></div><p>{slotCompetitors.filter((movie) => movie.tier === "S" || movie.tier === "SS").length ? `本档期有 ${slotCompetitors.filter((movie) => movie.tier === "S" || movie.tier === "SS").length} 部 S/SS 级强敌；高口碑可以在上映后逐步夺回排片。` : "本档期没有S级统治者，仍需警惕同类型影片分流。"}</p></div>
               <div className="competitor-grid">{slotCompetitors.map((movie) => <CompetitorCard key={movie.id} movie={movie} />)}</div>
@@ -1422,7 +1458,7 @@ export default function Home() {
               {selectedIpSource && ipSelection.route !== "original" && <div className="ip-release-brief"><span>IP</span><div><b>{routeName(ipSelection.route)} · 品牌开画 {ipEffects.openingPower >= 0 ? "+" : ""}{ipEffects.openingPower}</b><p>前作期待 {ipEffects.expectedScore?.toFixed(1)} · 系列疲劳 {ipEffects.projectedFatigue} · 回归主演 {ipEffects.returningCastCount}/2。最终口碑会根据成片评分是否兑现期待再结算。</p></div></div>}
               <div className="ticket-formula"><div><span>内容底盘</span><b>剧本 {scriptScore}</b><small>剧本低于65分时，最终观众评分最高只能达到6.5</small></div><div><span>剧本引擎</span><b>{scriptBuild.buildName}</b><small>{summarizeScriptDownstream(scriptBuild.downstream).join(" · ")}</small></div><div><span>主创号召</span><b>{Math.round(((director?.appeal ?? 0) + cast.reduce((sum, actor) => sum + actor.appeal, 0)) / 3)}</b><small>演员评级额外提供开画 +{castTierOpeningBonus.toFixed(1)}，但不能替代口碑</small></div><div><span>发行放大</span><b>×{(slot.boost * promo.boost).toFixed(2)}</b><small>高宣发抬升开画，但投入越高边际收益越低</small></div><div><span>同期竞争</span><b>-{Math.round(competitionPressure * 100)}%</b><small>竞品分流开画观众，并持续争夺排片</small></div><div><span>档期风险影响</span><b>×{scheduleEfficiency.toFixed(2)}</b><small>{productionTotals.scheduleRisk > 0 ? `累计 +${productionTotals.scheduleRisk} 风险，每点降低 2.5% 开画效率，最多降低 10%` : "风险已控制；负风险不会额外提高票房"}</small></div><div className="studio-factor"><span>制片人基本盘</span><b>×{studioReach.toFixed(2)}</b><small>只强化开画，等级与声望影响会逐日衰减</small></div></div>
               <div className="cost-breakdown"><span>制作与主创 <b>¥{money(totalBeforeRelease - ipCastingPremium)}</b></span><span>完片保险与管理 <b>¥{money(overheadCost)}</b></span><span>宣发及片场追加 <b>¥{money(currentPromoCost + currentEventCost)}</b></span>{ipCastingPremium > 0 && <span>IP回归主演溢价 <b>¥{money(ipCastingPremium)}</b></span>}{rewriteCost > 0 && <span>剧本改稿 <b>¥{money(rewriteCost)}</b></span>}<strong>总投资 ¥{money(totalCost)}</strong></div>
-              <ActionBar label={`当前预选：${slot.name} · ${promo.name}`} detail={`最终只确认 ${slot.name} · 总投资 ¥${money(totalCost)} · 待支付宣发 ¥${money(Math.max(0, projectPaymentDelta(totalCost, projectCostPaid)))} · 同档分流 ${Math.round(competitionPressure * 100)}%`} button={`确认${slot.name}上映，揭晓票房`} disabled={projectPaymentDelta(totalCost, projectCostPaid) > cash} onClick={simulate} back={() => moveToStage(3)} />
+              <ActionBar label={`当前预选：${slot.name} · ${promo.name}`} detail={`最终只确认 ${slot.name} · 总投资 ¥${money(totalCost)} · 待支付宣发 ¥${money(Math.max(0, projectPaymentDelta(totalCost, projectCostPaid)))} · 同档分流 ${Math.round(competitionPressure * 100)}%`} button={`确认${slot.name}上映，揭晓票房`} disabled={!selectedSlotAvailable || projectPaymentDelta(totalCost, projectCostPaid) > cash} onClick={simulate} back={() => moveToStage(3)} />
             </>
           )}
 
@@ -1523,8 +1559,8 @@ export default function Home() {
                 <SectionTitle number="新" title={`第 ${year} 届新人招募`} note="低成本签约，高潜力需要持续培训与作品机会" />
                 <div className="agency-explainer rookie"><b>新人培养模式</b><p>签约费接近于零，但初期不能承担票房号召。潜力决定成长上限，培训和参演共同塑造类型路线。</p></div>
                 <div className="rookie-refresh-bar">
-                  <div><span>SCOUTING REFRESH · 每年一次</span><b>{rookieRefreshYear === year ? "本年度星探名单已刷新" : "观看广告，提高高潜新人出现率"}</b><small>刷新名单固定出现 1 名高潜新人：75% 实力新锐，25% 天赋新星。测试版无需观看广告。</small></div>
-                  <button type="button" disabled={rookieRefreshYear === year} onClick={() => { setRookieRefreshYear(year); setCompanyNotice("星探刷新完成：本届名单已保证出现一名实力新锐或天赋新星。本年度不可再次刷新。"); }}>{rookieRefreshYear === year ? "本年已刷新" : "观看广告刷新"}</button>
+                  <div><span>SCOUTING REFRESH · 每年一次</span><b>{rookieRefreshYear === year ? "本年度星探名单已刷新" : "观看广告，提高高潜新人出现率"}</b><small>每次刷新都会独立抽取名单，并保证出现 1 名高潜新人；结果会写入存档，重进页面不会改变。</small></div>
+                  <button type="button" disabled={rookieRefreshYear === year} onClick={refreshRookieMarket}>{rookieRefreshYear === year ? "本年已刷新" : "观看广告刷新"}</button>
                 </div>
                 <div className="signing-grid">{rookieMarket.map((actor) => {
                   const quote = rookieContractQuote(actor);

@@ -6,7 +6,7 @@ import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts
 import { evaluateScript, getScriptQuestionBank, getScriptQuestions, rewriteScript } from "../app/script-engine.ts";
 import { coreStylesByGenre, deriveScriptBuild, describeBeginnerBuildChange, describeBuildChange, describeCoreStyle, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, normalizeSequentialScriptProgress, resolveEnsembleCast, resolveEnsembleDownstream, scriptConnections, scriptQuestionState, summarizeScriptDownstream } from "../app/script-build-system.ts";
 import { addFilmToSeason, buildSeasonStandings, defaultPoliciesForPath, emptySeasonStats, marketEraForYear, policiesForPath, resolveMarketEraEffects, resolveStudioStrategy, rivalGenrePressure, rivalPlansForYear, strategyLevel, studioPathXpGain, studioPaths, summarizeStrategyEffects, upcomingMarketEra } from "../app/studio-strategy-system.ts";
-import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, resolveProductionChain } from "../app/game-systems.ts";
+import { availableReleaseSlotIds, awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, releaseSlotStatus, resolveProductionChain } from "../app/game-systems.ts";
 import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, normalizeFilmHistory, resolveIpGenre, resolveIpProjectEffects } from "../app/ip-system.ts";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
 
@@ -248,6 +248,11 @@ test("annual scouting favors ordinary rookies while the yearly refresh guarantee
   assert.equal(refreshCounts.gold + refreshCounts.red, 5000);
   const allGoldSigned = new Set(rookieCandidates.filter((rookie) => rookie.rarity === "gold").map((rookie) => rookie.id));
   assert.equal(buildRookieMarket(1, allGoldSigned, true).filter((rookie) => rookie.rarity === "red").length, 1);
+  const naturalLineups = new Set(Array.from({ length: 100 }, (_, seed) => buildRookieMarket(1, new Set(), false, seed).map((rookie) => rookie.id).join("-")));
+  assert.ok(naturalLineups.size > 20, "fresh saves should not share one fixed first-year rookie list");
+  assert.deepEqual(buildRookieMarket(1, new Set(), true, 20260827), buildRookieMarket(1, new Set(), true, 20260827), "a persisted refresh seed must reproduce the same list");
+  const refreshLineups = new Set(Array.from({ length: 100 }, (_, seed) => buildRookieMarket(1, new Set(), true, seed).map((rookie) => rookie.id).join("-")));
+  assert.ok(refreshLineups.size > 20, "independent refresh seeds should produce varied rookie lists");
 });
 
 test("genre training remains unique and rookie fees catch established stars after hit films", () => {
@@ -633,9 +638,21 @@ test("persistent rivals announce deterministic projects and create visible same-
   assert.deepEqual(plans, rivalPlansForYear(4));
   assert.equal(plans.length, 3);
   assert.equal(new Set(plans.map((plan) => plan.name)).size, 3);
+  assert.deepEqual(plans.map((plan) => plan.pressure), [6, 4, 5]);
   assert.ok(plans.every((plan) => plan.genre && plan.title && plan.pressure > 0));
   assert.equal(rivalGenrePressure(4, "不存在的题材"), 0);
   assert.ok(rivalGenrePressure(4, plans[0].genre) >= plans[0].pressure);
+});
+
+test("production delays progressively close early release windows while preserving a fallback", () => {
+  assert.deepEqual(availableReleaseSlotIds(-3), ["spring", "may", "summer", "national"]);
+  assert.deepEqual(availableReleaseSlotIds(0), ["spring", "may", "summer", "national"]);
+  assert.deepEqual(availableReleaseSlotIds(1), ["may", "summer", "national"]);
+  assert.deepEqual(availableReleaseSlotIds(2), ["summer", "national"]);
+  assert.deepEqual(availableReleaseSlotIds(3), ["summer", "national"]);
+  assert.deepEqual(availableReleaseSlotIds(4), ["national"]);
+  assert.equal(releaseSlotStatus("spring", 1).available, false);
+  assert.equal(releaseSlotStatus("national", 99).available, true);
 });
 
 test("five-film seasons reward balanced long-term performance and keep rivals competitive", () => {

@@ -118,6 +118,25 @@ export type ProductionChainEvent = {
 };
 export type ProductionTotals = { quality: number; market: number; cost: number; morale: number; scheduleRisk: number; resolved: number; notes: string[] };
 
+export type ReleaseSlotId = "spring" | "may" | "summer" | "national";
+
+const releaseSlotRiskThresholds: Partial<Record<ReleaseSlotId, number>> = {
+  spring: 1,
+  may: 2,
+  summer: 4,
+};
+
+export function releaseSlotStatus(slotId: ReleaseSlotId, scheduleRisk: number) {
+  const threshold = releaseSlotRiskThresholds[slotId];
+  const risk = Math.max(0, Math.floor(scheduleRisk));
+  if (!threshold || risk < threshold) return { available: true, reason: "拍摄进度允许按时上映" };
+  return { available: false, reason: `累计档期风险 +${risk}，已错过该档期（需低于 +${threshold}）` };
+}
+
+export function availableReleaseSlotIds(scheduleRisk: number): ReleaseSlotId[] {
+  return (["spring", "may", "summer", "national"] as ReleaseSlotId[]).filter((slotId) => releaseSlotStatus(slotId, scheduleRisk).available);
+}
+
 export function getProductionChoiceState(choices: (ProductionChoice | null)[], index: number): ProductionChoiceState {
   if (index < 0 || index >= choices.length) return "waiting";
   if (choices.slice(0, index).some((choice) => !choice)) return "waiting";

@@ -328,7 +328,7 @@ export function rivalPlansForYear(year: number): RivalPlan[] {
       genre,
       title: `${titleSeed}${suffix}`,
       approach: studio.id === "titan" ? "抢占头部档期" : studio.id === "green" ? "瞄准口碑与奖项" : "争夺大众观众",
-      pressure: studio.id === "titan" ? 5 : studio.id === "green" ? 3 : 4,
+      pressure: studio.id === "titan" ? 6 : studio.id === "green" ? 4 : 5,
     };
   });
 }
@@ -358,8 +358,8 @@ function rivalSeasonStats(studio: RivalStudio, startYear: number, films: number)
     const year = startYear + index;
     const studioIndex = rivalStudios.findIndex((item) => item.id === studio.id);
     const wave = ((year * 17 + studioIndex * 23) % 21) - 10;
-    const grossBase = studio.id === "titan" ? 72000 : studio.id === "green" ? 45000 : 61000;
-    const qualityBase = studio.id === "green" ? 88 : studio.id === "titan" ? 82 : 79;
+    const grossBase = studio.id === "titan" ? 75000 : studio.id === "green" ? 48000 : 64000;
+    const qualityBase = studio.id === "green" ? 89 : studio.id === "titan" ? 83 : 80;
     const awards = studio.id === "green" ? ((year + studioIndex) % 2 === 0 ? 2 : 1) : (year + studioIndex) % 3 === 0 ? 1 : 0;
     const gross = Math.max(26000, grossBase + wave * 1700);
     stats = addFilmToSeason(stats, { gross, awards, quality: qualityBase + Math.round(wave / 4), breakEvenGross: studio.id === "titan" ? 52000 : 36000 });
