@@ -489,11 +489,11 @@ test("all core cards separate real advantages from construction costs", () => {
     const description = describeCoreStyle(style);
     assert.ok(description.advantages.length > 0);
     assert.ok(description.costs.length > 0);
-    assert.doesNotMatch(description.advantages.join(" "), /成本 \+|开画 -|口碑 -|长线留存 -|明星开画权重 -/);
-    assert.doesNotMatch(description.costs.join(" "), /成本 -|质量 \+|口碑 \+|开画 \+|长线留存 \+|评审 \+|片库长尾 \+/);
+    assert.doesNotMatch(description.advantages.join(" "), /成本 \+|首映号召 -|口碑 -|长线留存 -|明星首映号召权重 -/);
+    assert.doesNotMatch(description.costs.join(" "), /成本 -|质量 \+|口碑 \+|首映号召 \+|长线留存 \+|评审 \+|片库长尾 \+/);
   }
   const hunt = describeCoreStyle(coreStylesByGenre["犯罪悬疑"].find((style) => style.id === "crime-hunt"));
-  assert.match(hunt.advantages.join(" "), /开画 \+3|明星开画权重 \+12%/);
+  assert.match(hunt.advantages.join(" "), /首映号召 \+3|明星首映号召权重 \+12%/);
   assert.doesNotMatch(hunt.advantages.join(" "), /成本/);
   assert.match(hunt.costs.join(" "), /核心主演成本 \+6%/);
 });
@@ -598,7 +598,7 @@ test("connections merge real downstream tradeoffs with bounded totals", () => {
   assert.ok(comparison);
   assert.notDeepEqual(comparison.connected.build.downstream, comparison.plain.build.downstream);
   assert.ok(comparison.connected.build.connections.every((connection) => comparison.connected.build.appliedEffects.some((effect) => effect.startsWith(`${connection.name}：`))));
-  assert.ok(summarizeScriptDownstream(comparison.connected.build.downstream).some((line) => /成本|质量|口碑|开画|留存|评审|片库|群像/.test(line)));
+  assert.ok(summarizeScriptDownstream(comparison.connected.build.downstream).some((line) => /成本|质量|口碑|首映号召|留存|评审|片库|群像/.test(line)));
   assert.ok(mostConnections >= 2, "multi-connection builds should exercise the merge caps");
 });
 
@@ -642,9 +642,9 @@ test("four studio identities each offer six bounded tradeoff policies and three 
   assert.ok(commercial.openingPower > 0 && commercial.qualityBonus > 0);
   assert.ok(commercial.budgetCostMultiplier > 1 && commercial.talentCostMultiplier > 1 && commercial.retentionBonus < 0);
   assert.ok(commercial.openingPower <= 8 && commercial.qualityBonus <= 6);
-  assert.ok(summarizeStrategyEffects("厂牌", commercial).some((line) => line.includes("预算") && line.includes("开画")) === false, "separate summaries keep production and market effects readable");
+  assert.ok(summarizeStrategyEffects("厂牌", commercial).some((line) => line.includes("预算") && line.includes("首映号召")) === false, "separate summaries keep production and market effects readable");
   assert.ok(summarizeStrategyEffects("厂牌", commercial).some((line) => line.includes("预算")));
-  assert.ok(summarizeStrategyEffects("厂牌", commercial).some((line) => line.includes("开画")));
+  assert.ok(summarizeStrategyEffects("厂牌", commercial).some((line) => line.includes("首映号召")));
   const locked = resolveStudioStrategy("commercial", ["market-blitz"], 20, [], context);
   assert.equal(locked.genreHeatBonus, 0, "locked policies must not apply early");
 });
@@ -708,7 +708,7 @@ test("beginner feedback reveals one plain-language consequence only after commit
   assert.equal(describeBeginnerBuildChange(base, chosenCore), "故事方向确定为「本格推理」，接下来用选择让它逐渐成型。");
   assert.match(describeBeginnerBuildChange(chosenCore, { ...chosenCore, activeEngines: [core.engine] }), /核心路线已经成型/);
   assert.match(describeBeginnerBuildChange(chosenCore, { ...chosenCore, unresolvedFlaws: ["伏笔缺口"] }), /后面仍有机会补救/);
-  assert.doesNotMatch(describeBeginnerBuildChange(chosenCore, { ...chosenCore, alignedChoices: 1 }), /\+\d|成本|开画|评审/);
+  assert.doesNotMatch(describeBeginnerBuildChange(chosenCore, { ...chosenCore, alignedChoices: 1 }), /\+\d|成本|首映号召|评审/);
 });
 
 test("script questions advance sequentially and old partial saves cannot skip ahead", () => {

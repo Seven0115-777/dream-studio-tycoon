@@ -98,39 +98,39 @@ export type SeasonArchiveRecord = {
 };
 
 export const studioPaths: StudioPath[] = [
-  { id: "commercial", name: "商业大片厂", code: "BLOCKBUSTER", tagline: "用规模、明星和档期制造全民事件", strength: "开画与票房爆发更强", pressure: "预算和市场期待同步提高" },
+  { id: "commercial", name: "商业大片厂", code: "BLOCKBUSTER", tagline: "用规模、明星和档期制造全民事件", strength: "首映号召与票房爆发更强", pressure: "预算和市场期待同步提高" },
   { id: "auteur", name: "作者电影厂牌", code: "AUTEUR", tagline: "让导演表达成为公司的金字招牌", strength: "成片质量、口碑和奖项更稳", pressure: "首日动员能力偏弱" },
   { id: "genre", name: "类型片工坊", code: "GENRE LAB", tagline: "在两个专精题材里反复打磨配方", strength: "专精题材形成稳定制作优势", pressure: "跨出舒适区会承担口碑风险" },
   { id: "talent", name: "明星经纪帝国", code: "STAR HOUSE", tagline: "把演员生涯和黄金班底变成公司资产", strength: "新人培养与表演奖项更强", pressure: "主创与团队运营成本更高" },
 ];
 
 export const studioPolicies: StudioPolicy[] = [
-  { id: "wide-release", pathId: "commercial", name: "全国铺排", unlockAt: 0, upside: "开画 +3", pressure: "长尾留存 -0.8%" },
+  { id: "wide-release", pathId: "commercial", name: "全国铺排", unlockAt: 0, upside: "首映号召 +3", pressure: "长尾留存 -0.8%" },
   { id: "presale", pathId: "commercial", name: "预售控本", unlockAt: 0, upside: "制作预算 -6%", pressure: "成片质量 -1" },
-  { id: "star-vehicle", pathId: "commercial", name: "明星中心制", unlockAt: 0, upside: "高号召主演使开画 +3", pressure: "主创成本 +8%" },
-  { id: "franchise-line", pathId: "commercial", name: "系列化产线", unlockAt: 25, upside: "IP质量 +1、开画 +2", pressure: "原创项目预算 +4%" },
+  { id: "star-vehicle", pathId: "commercial", name: "明星中心制", unlockAt: 0, upside: "高号召主演使首映号召 +3", pressure: "主创成本 +8%" },
+  { id: "franchise-line", pathId: "commercial", name: "系列化产线", unlockAt: 25, upside: "IP质量 +1、首映号召 +2", pressure: "原创项目预算 +4%" },
   { id: "industrial-scale", pathId: "commercial", name: "工业化大片", unlockAt: 55, upside: "大片级项目质量 +2", pressure: "制作预算 +7%" },
   { id: "market-blitz", pathId: "commercial", name: "饱和营销", unlockAt: 90, upside: "题材市场热度 +5", pressure: "成片口碑 -1" },
 
-  { id: "final-cut", pathId: "auteur", name: "导演终剪权", unlockAt: 0, upside: "成片质量 +2", pressure: "开画 -2" },
-  { id: "festival-route", pathId: "auteur", name: "电影节路线", unlockAt: 0, upside: "影片/导演评审各 +4", pressure: "开画 -1" },
-  { id: "slow-burn", pathId: "auteur", name: "慢热长线", unlockAt: 0, upside: "口碑 +1、长尾 +1%", pressure: "开画 -3" },
-  { id: "lean-craft", pathId: "auteur", name: "小体量美学", unlockAt: 25, upside: "小成本项目质量 +2", pressure: "开画 -1" },
+  { id: "final-cut", pathId: "auteur", name: "导演终剪权", unlockAt: 0, upside: "成片质量 +2", pressure: "首映号召 -2" },
+  { id: "festival-route", pathId: "auteur", name: "电影节路线", unlockAt: 0, upside: "影片/导演评审各 +4", pressure: "首映号召 -1" },
+  { id: "slow-burn", pathId: "auteur", name: "慢热长线", unlockAt: 0, upside: "口碑 +1、长尾 +1%", pressure: "首映号召 -3" },
+  { id: "lean-craft", pathId: "auteur", name: "小体量美学", unlockAt: 25, upside: "小成本项目质量 +2", pressure: "首映号召 -1" },
   { id: "director-circle", pathId: "auteur", name: "导演合伙人", unlockAt: 55, upside: "适配导演质量 +1、导演评审 +3", pressure: "主创成本 +6%" },
-  { id: "anti-star", pathId: "auteur", name: "去明星化", unlockAt: 90, upside: "非顶流阵容质量 +2", pressure: "高号召阵容开画 -2" },
+  { id: "anti-star", pathId: "auteur", name: "去明星化", unlockAt: 90, upside: "非顶流阵容质量 +2", pressure: "高号召阵容首映号召 -2" },
 
   { id: "type-bible", pathId: "genre", name: "类型圣经", unlockAt: 0, upside: "专精题材质量 +2", pressure: "制作预算 +4%" },
-  { id: "cult-audience", pathId: "genre", name: "核心影迷", unlockAt: 0, upside: "专精题材长尾 +1.2%", pressure: "开画 -2" },
-  { id: "genre-star", pathId: "genre", name: "类型明星", unlockAt: 0, upside: "专精题材开画 +2", pressure: "主创成本 +5%" },
+  { id: "cult-audience", pathId: "genre", name: "核心影迷", unlockAt: 0, upside: "专精题材长尾 +1.2%", pressure: "首映号召 -2" },
+  { id: "genre-star", pathId: "genre", name: "类型明星", unlockAt: 0, upside: "专精题材首映号召 +2", pressure: "主创成本 +5%" },
   { id: "cross-genre", pathId: "genre", name: "跨类型实验", unlockAt: 25, upside: "非专精题材口碑 +1", pressure: "非专精题材质量 -1" },
   { id: "precision-marketing", pathId: "genre", name: "精准宣发", unlockAt: 55, upside: "专精题材市场热度 +5", pressure: "口碑 -1" },
-  { id: "genre-awards", pathId: "genre", name: "类型片冲奖", unlockAt: 90, upside: "专精题材三项评审 +2", pressure: "开画 -1" },
+  { id: "genre-awards", pathId: "genre", name: "类型片冲奖", unlockAt: 90, upside: "专精题材三项评审 +2", pressure: "首映号召 -1" },
 
   { id: "rookie-lab", pathId: "talent", name: "新人孵化器", unlockAt: 0, upside: "新人参演质量 +2、成长 +2", pressure: "主创成本 +4%" },
   { id: "golden-pair", pathId: "talent", name: "黄金搭档", unlockAt: 0, upside: "双主演质量 +1、口碑 +1", pressure: "主创成本 +6%" },
   { id: "inhouse-first", pathId: "talent", name: "旗下优先", unlockAt: 0, upside: "使用旗下主演时主创成本 -6%", pressure: "公司运营成本 +5%" },
-  { id: "star-service", pathId: "talent", name: "顶流服务制", unlockAt: 25, upside: "高号召主演使开画 +3", pressure: "成片口碑 -1" },
-  { id: "performance-school", pathId: "talent", name: "表演训练营", unlockAt: 55, upside: "质量 +1、表演评审 +3", pressure: "开画 -1" },
+  { id: "star-service", pathId: "talent", name: "顶流服务制", unlockAt: 25, upside: "高号召主演使首映号召 +3", pressure: "成片口碑 -1" },
+  { id: "performance-school", pathId: "talent", name: "表演训练营", unlockAt: 55, upside: "质量 +1、表演评审 +3", pressure: "首映号召 -1" },
   { id: "career-library", pathId: "talent", name: "生涯作品库", unlockAt: 90, upside: "片库收益倍率 +8%", pressure: "制作预算 +3%" },
 ];
 
@@ -178,16 +178,16 @@ export function resolveStudioStrategy(pathId: StudioPathId | null, activePolicyI
   if (pathId === "commercial") {
     effects.openingPower += 1;
     effects.budgetCostMultiplier *= 1.03;
-    effects.activeNotes.push("商业大片厂：开画 +1、制作预算 +3%");
+    effects.activeNotes.push("商业大片厂：首映号召 +1、制作预算 +3%");
   } else if (pathId === "auteur") {
     effects.qualityBonus += 1;
     effects.openingPower -= 1;
-    effects.activeNotes.push("作者厂牌：质量 +1、开画 -1");
+    effects.activeNotes.push("作者厂牌：质量 +1、首映号召 -1");
   } else if (pathId === "genre") {
     if (focus) {
       effects.qualityBonus += 1;
       effects.openingPower += 1;
-      effects.activeNotes.push("专精题材：质量 +1、开画 +1");
+      effects.activeNotes.push("专精题材：质量 +1、首映号召 +1");
     } else {
       effects.wordOfMouthBonus -= 1;
       effects.activeNotes.push("非专精题材：口碑 -1");
@@ -251,7 +251,7 @@ export function summarizeStrategyEffects(label: string, effects: StudioStrategyE
     effects.talentCostMultiplier !== 1 ? `主创 ${signed(Math.round((effects.talentCostMultiplier - 1) * 100))}%` : "",
   ].filter(Boolean);
   const market = [
-    effects.openingPower ? `开画 ${signed(effects.openingPower)}` : "",
+    effects.openingPower ? `首映号召 ${signed(effects.openingPower)}` : "",
     effects.wordOfMouthBonus ? `口碑 ${signed(effects.wordOfMouthBonus)}` : "",
     effects.genreHeatBonus ? `市场热度 +${effects.genreHeatBonus}` : "",
     effects.retentionBonus ? `长尾 ${signed(Number((effects.retentionBonus * 100).toFixed(1)))}%` : "",
@@ -271,11 +271,11 @@ export function summarizeStrategyEffects(label: string, effects: StudioStrategyE
 
 const eras: { start: number; end: number | null; era: MarketEra }[] = [
   { start: 1, end: 2, era: { id: "normal", name: "院线常态", years: "第1—2年", headline: "市场仍以明星、类型和常规宣发为主", rule: "没有额外时代修正，适合建立公司的第一套打法。" } },
-  { start: 3, end: 5, era: { id: "word-of-mouth", name: "口碑回潮", years: "第3—5年", headline: "观众开始厌倦只靠明星和预告片制造的首周热度", rule: "所有影片口碑 +1，但开画 -1。" } },
-  { start: 6, end: 8, era: { id: "blockbuster-bubble", name: "大片泡沫", years: "第6—8年", headline: "视效大片争夺银幕，工业规模变成市场焦点", rule: "大片级项目开画 +3、预算 +8%；其他规模长尾小幅提高。" } },
-  { start: 9, end: 11, era: { id: "new-wave", name: "新人浪潮", years: "第9—11年", headline: "新面孔成为市场话题，老套明星组合吸引力下降", rule: "使用新人时质量 +2、开画 +1；没有新人时开画 -1。" } },
-  { start: 12, end: 14, era: { id: "franchise-fatigue", name: "系列疲劳期", years: "第12—14年", headline: "观众对机械续作失去耐心，原创概念重新受追捧", rule: "IP开画 -2、口碑 -1；原创口碑 +1、片库倍率提高。" } },
-  { start: 15, end: null, era: { id: "fragmented", name: "分众时代", years: "第15年起", headline: "全民爆款减少，稳定服务核心观众成为长期能力", rule: "所有影片开画 -1、长尾 +0.8%。" } },
+  { start: 3, end: 5, era: { id: "word-of-mouth", name: "口碑回潮", years: "第3—5年", headline: "观众开始厌倦只靠明星和预告片制造的首周热度", rule: "所有影片口碑 +1，但首映号召 -1。" } },
+  { start: 6, end: 8, era: { id: "blockbuster-bubble", name: "大片泡沫", years: "第6—8年", headline: "视效大片争夺银幕，工业规模变成市场焦点", rule: "大片级项目首映号召 +3、预算 +8%；其他规模长尾小幅提高。" } },
+  { start: 9, end: 11, era: { id: "new-wave", name: "新人浪潮", years: "第9—11年", headline: "新面孔成为市场话题，老套明星组合吸引力下降", rule: "使用新人时质量 +2、首映号召 +1；没有新人时首映号召 -1。" } },
+  { start: 12, end: 14, era: { id: "franchise-fatigue", name: "系列疲劳期", years: "第12—14年", headline: "观众对机械续作失去耐心，原创概念重新受追捧", rule: "IP首映号召 -2、口碑 -1；原创口碑 +1、片库倍率提高。" } },
+  { start: 15, end: null, era: { id: "fragmented", name: "分众时代", years: "第15年起", headline: "全民爆款减少，稳定服务核心观众成为长期能力", rule: "所有影片首映号召 -1、长尾 +0.8%。" } },
 ];
 
 export function marketEraForYear(year: number) {

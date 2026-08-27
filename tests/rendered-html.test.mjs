@@ -65,7 +65,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /from "\.\/ip-system"/);
   assert.match(page, /from "\.\/script-engine"/);
   assert.match(page, /window\.scrollTo\(\{ top: 0, left: 0, behavior: "auto" \}\)/);
-  assert.match(page, /演员评级额外提供开画/);
+  assert.match(page, /演员评级额外提供首映号召/);
   assert.match(page, /作为银幕新面孔意外出圈/);
   assert.match(page, /导演调度受到质疑/);
   assert.match(page, /也救不了薄弱成片/);
@@ -207,7 +207,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /旗下艺人内部价/);
   assert.match(page, /解散公司并建立全新存档/);
   assert.match(page, /评分驱动票房/);
-  assert.match(page, /只强化开画，等级与声望影响会逐日衰减/);
+  assert.match(page, /只强化首映号召，等级与声望影响会逐日衰减/);
   assert.match(page, /const \[firstId, secondId\] = \[first\.id, second\.id\]\.sort/);
   assert.match(page, /firstId \* 17 \+ secondId \* 11/);
   assert.match(page, /投入越高边际收益越低/);
@@ -227,7 +227,8 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /新人出圈/);
   assert.match(page, /评级变动/);
   assert.match(page, /解锁.*影后.*影帝|解锁.*影帝/);
-  assert.match(page, /演员评级额外提供开画/);
+  assert.match(page, /演员评级额外提供首映号召/);
+  assert.match(page, /首映号召力（行业称“开画”）决定首日吸引观众的能力/);
   assert.match(page, /最终观众评分最高只能达到6\.5/);
   assert.match(mobileUi, /export function GameHeader/);
   assert.match(mobileUi, /制片第 \{year\} 年/);

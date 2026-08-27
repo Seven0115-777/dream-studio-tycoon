@@ -55,7 +55,7 @@ export const wordOfMouthGoals = [
     id: "comeback" as const,
     name: "逆袭路线",
     summary: "低开高走，用长线口碑翻盘。",
-    rule: "完成1部开画力≤80、评分≥8.3且最终回本的电影",
+    rule: "完成1部首映号召力≤80、评分≥8.3且最终回本的电影",
     target: 1,
     legacy: "完成后：第6年起票房长尾留存+0.4%",
   },
@@ -78,7 +78,7 @@ export const wordOfMouthReleasePlans = [
     openingPower: -2,
     pictureAwardBonus: 0,
     directorAwardBonus: 0,
-    note: "口碑力+1，开画力-2",
+    note: "口碑力+1，首映号召力-2",
   },
   {
     id: "festival-premiere" as const,
@@ -88,7 +88,7 @@ export const wordOfMouthReleasePlans = [
     openingPower: -2,
     pictureAwardBonus: 3,
     directorAwardBonus: 3,
-    note: "开画力-2，最佳影片/导演评审各+3",
+    note: "首映号召力-2，最佳影片/导演评审各+3",
   },
   {
     id: "embargo" as const,
@@ -98,7 +98,7 @@ export const wordOfMouthReleasePlans = [
     openingPower: 2,
     pictureAwardBonus: 0,
     directorAwardBonus: 0,
-    note: "开画力+2，口碑力-1",
+    note: "首映号召力+2，口碑力-1",
   },
 ];
 
@@ -148,7 +148,7 @@ export function annualRhythmForYear(year: number): AnnualRhythm {
     eyebrow: `第${year}年 · 大片竞赛`,
     title: "规模正在成为新的行业门槛。",
     description: "利用已经成型的厂牌与IP资产，在高成本、高首发压力下寻找稳定胜率。",
-    primary: "主目标：做大开画，守住投资回报",
+    primary: "主目标：提高首映号召，守住投资回报",
     secondary: "长期课题：经营厂牌、IP与艺人资产",
     nextUnlock: year === 8 ? "第九年市场将转向新锐表达" : "下一年大片竞争继续升温",
   };
