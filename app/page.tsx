@@ -7,6 +7,7 @@ import { annualInvestmentAmount, boxOfficeSettlementTarget, buildContentModel, b
 import { evolveDirectorMarket, evolveGenreMarket, type MarketDirector } from "./market-system";
 import { evaluateScript, getScriptQuestions, rewriteScript, type RewriteDirection, type ScriptReport } from "./script-engine";
 import { deriveScriptBuild, describeBeginnerBuildChange, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, normalizeSequentialScriptProgress, resolveEnsembleCast, resolveEnsembleDownstream, scriptQuestionState, summarizeScriptDownstream, type EnsembleCastId } from "./script-build-system";
+import { addFilmToSeason, buildSeasonStandings, defaultPoliciesForPath, emptySeasonStats, marketEraForYear, policiesForPath, resolveMarketEraEffects, resolveStudioStrategy, rivalGenrePressure, rivalPlansForYear, seasonResultTitle, strategyLevel, studioPathXpGain, studioPaths, summarizeStrategyEffects, upcomingMarketEra, type SeasonArchiveRecord, type SeasonStats, type StudioPathId } from "./studio-strategy-system";
 import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, resolveProductionChain, type AwardNomination, type GoalOutcome, type ProductionChoice } from "./game-systems";
 import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, filmRecordId, findIpSource, ipRoutes, isIpEligible, normalizeFilmHistory, resolveIpGenre, resolveIpProjectEffects, routeName, suggestIpTitle, type FilmHistoryRecord, type IpProjectSelection, type IpRouteId } from "./ip-system";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, externalAgencyIncome, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
@@ -16,7 +17,7 @@ type Director = MarketDirector;
 type Actor = AgencyActor;
 type DailyReport = { day: number; boxOffice: number; change: number | null; audienceScore: number; positiveRate: number; momentum: string; headline: string; audienceReaction: string; internetReaction: string; hotTopic: string };
 type PublicityContext = { director: Director; cast: Actor[]; genre: string; quality: number; honors: Record<number, string[]> };
-type Result = { quality: number; gross: number; profit: number; score: number; audience: number; days: number[]; monthDays: number[]; weekGross: number; tailGross: number; studioRevenue: number; investorShare?: number; investmentAmount?: number; successBonus: number; breakEvenGross: number; overheadCost: number; dailyReports: DailyReport[]; awards: string[]; nominations?: AwardNomination[]; awardCap?: number; goalOutcome?: GoalOutcome; xpGain: number; reputationGain: number; reachUsed: number; wordOfMouth: number; openingPower: number; retention: number; trend: string; trendNote: string; competitionPressure: number; scheduleRisk?: number; scheduleEfficiency?: number; libraryMultiplier?: number; buildName?: string; filmRecord?: FilmHistoryRecord };
+type Result = { quality: number; gross: number; profit: number; score: number; audience: number; days: number[]; monthDays: number[]; weekGross: number; tailGross: number; studioRevenue: number; investorShare?: number; investmentAmount?: number; successBonus: number; breakEvenGross: number; overheadCost: number; dailyReports: DailyReport[]; awards: string[]; nominations?: AwardNomination[]; awardCap?: number; goalOutcome?: GoalOutcome; xpGain: number; reputationGain: number; pathXpGain?: number; strategyNotes?: string[]; reachUsed: number; wordOfMouth: number; openingPower: number; retention: number; trend: string; trendNote: string; competitionPressure: number; scheduleRisk?: number; scheduleEfficiency?: number; libraryMultiplier?: number; buildName?: string; filmRecord?: FilmHistoryRecord };
 type ActorProfile = AgencyProfile;
 type Deal = { fee: number; morale: number; label: string };
 type CompanyTab = "roster" | "market" | "rookies";
@@ -80,6 +81,13 @@ type LocalGameSave = {
   projectCostPaid?: number;
   ipRoute?: IpRouteId;
   ipSourceId?: string | null;
+  studioPathId?: StudioPathId | null;
+  studioPathCommitted?: boolean;
+  studioPathXp?: number;
+  activePolicyIds?: string[];
+  studioFocusGenres?: string[];
+  seasonStats?: SeasonStats;
+  seasonArchive?: SeasonArchiveRecord[];
   history: FilmHistoryRecord[];
 };
 
@@ -343,6 +351,13 @@ export default function Home() {
   const [result, setResult] = useState<Result | null>(null);
   const [history, setHistory] = useState<FilmHistoryRecord[]>([]);
   const [ipSelection, setIpSelection] = useState<IpProjectSelection>({ route: "original", sourceId: null });
+  const [studioPathId, setStudioPathId] = useState<StudioPathId | null>(null);
+  const [studioPathCommitted, setStudioPathCommitted] = useState(false);
+  const [studioPathXp, setStudioPathXp] = useState(0);
+  const [activePolicyIds, setActivePolicyIds] = useState<string[]>([]);
+  const [studioFocusGenres, setStudioFocusGenres] = useState<string[]>([]);
+  const [seasonStats, setSeasonStats] = useState<SeasonStats>(() => emptySeasonStats(1));
+  const [seasonArchive, setSeasonArchive] = useState<SeasonArchiveRecord[]>([]);
   const [revealedDays, setRevealedDays] = useState(0);
   const [boxOfficeCashCredited, setBoxOfficeCashCredited] = useState(0);
   const [boxOfficeSettlementLocked, setBoxOfficeSettlementLocked] = useState(false);
@@ -449,6 +464,16 @@ export default function Home() {
         setProjectCostPaid(save.projectCostPaid ?? 0);
         setHistory(restoredHistory);
         setIpSelection(restoredIpSource && save.ipRoute && save.ipRoute !== "original" ? { route: save.ipRoute, sourceId: restoredIpSource.id ?? null } : { route: "original", sourceId: null });
+        const restoredPathId = save.studioPathId ?? null;
+        setStudioPathId(restoredPathId);
+        setStudioPathCommitted(save.studioPathCommitted ?? Boolean(restoredPathId));
+        setStudioPathXp(save.studioPathXp ?? 0);
+        setActivePolicyIds(save.activePolicyIds ?? (restoredPathId ? defaultPoliciesForPath(restoredPathId) : []));
+        setStudioFocusGenres(save.studioFocusGenres ?? []);
+        const seasonStartYear = Math.floor((Math.max(1, save.year) - 1) / 5) * 5 + 1;
+        const restoredSeason = save.seasonStats ?? [...restoredHistory].filter((film) => (film.year ?? 0) >= seasonStartYear).reverse().reduce((stats, film) => addFilmToSeason(stats, { gross: film.gross, awards: film.awards, quality: film.quality ?? 75, breakEvenGross: film.breakEvenGross ?? 40000 }), emptySeasonStats(seasonStartYear));
+        setSeasonStats(restoredSeason);
+        setSeasonArchive(save.seasonArchive ?? []);
       } catch {
         window.localStorage.removeItem(SAVE_KEY);
       } finally {
@@ -528,10 +553,17 @@ export default function Home() {
       projectCostPaid,
       ipRoute: ipSelection.route,
       ipSourceId: ipSelection.sourceId,
+      studioPathId,
+      studioPathCommitted,
+      studioPathXp,
+      activePolicyIds,
+      studioFocusGenres,
+      seasonStats,
+      seasonArchive,
       history,
     };
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  }, [actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, deals, director?.id, directorPool, ensembleCastId, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, ipSelection.route, ipSelection.sourceId, productionChoices, productionLocked, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieRefreshYear, saveReady, scriptAnswers, scriptCommittedCount, scriptReport, signedTalents, slot.id, stage, studioXp, title, year]);
+  }, [activePolicyIds, actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, deals, director?.id, directorPool, ensembleCastId, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, ipSelection.route, ipSelection.sourceId, productionChoices, productionLocked, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieRefreshYear, saveReady, scriptAnswers, scriptCommittedCount, scriptReport, seasonArchive, seasonStats, signedTalents, slot.id, stage, studioFocusGenres, studioPathCommitted, studioPathId, studioPathXp, studioXp, title, year]);
 
   const studioLevel = Math.min(10, 1 + Math.floor(studioXp / 180));
   const studioXpProgress = studioXp % 180;
@@ -567,15 +599,34 @@ export default function Home() {
   const availableIpSources = useMemo(() => eligibleIpSources(history), [history]);
   const selectedIpSource = useMemo(() => findIpSource(history, ipSelection.sourceId), [history, ipSelection.sourceId]);
   const ipEffects = useMemo(() => resolveIpProjectEffects(history, ipSelection, { genre: genre.name, castIds: cast.map((actor) => actor.id), coreStyleId: scriptBuild.core?.id }), [cast, genre.name, history, ipSelection, scriptBuild.core?.id]);
+  const currentStudioPath = studioPaths.find((path) => path.id === studioPathId) ?? null;
+  const currentStudioPolicies = policiesForPath(studioPathId);
+  const studioStrategyReady = year < 2 || Boolean(studioPathId && (studioPathId !== "genre" || studioFocusGenres.length === 2));
+  const currentMarketEra = marketEraForYear(year);
+  const nextMarketEra = upcomingMarketEra(year);
+  const currentRivalPlans = useMemo(() => rivalPlansForYear(year), [year]);
+  const seasonStandings = useMemo(() => buildSeasonStandings(seasonStats), [seasonStats]);
+  const strategyContext = useMemo(() => ({
+    budgetName: budget.name,
+    genre: genre.name,
+    isIp: ipSelection.route !== "original",
+    directorMatched: Boolean(director?.genres.includes(genre.name)),
+    castAppeal: cast.length ? cast.reduce((sum, actor) => sum + actor.appeal, 0) / cast.length : 0,
+    hasRookie: cast.some((actor) => actor.id >= 100),
+    signedCastCount: cast.filter((actor) => signedTalentIds.has(actor.id)).length,
+  }), [budget.name, cast, director, genre.name, ipSelection.route, signedTalentIds]);
+  const studioStrategy = useMemo(() => resolveStudioStrategy(studioPathId, activePolicyIds, studioPathXp, studioFocusGenres, strategyContext), [activePolicyIds, strategyContext, studioFocusGenres, studioPathId, studioPathXp]);
+  const eraEffects = useMemo(() => resolveMarketEraEffects(year, strategyContext), [strategyContext, year]);
+  const combinedStrategyNotes = [...summarizeStrategyEffects("厂牌", studioStrategy), ...summarizeStrategyEffects("时代", eraEffects)];
   const industryCostIndex = Math.min(1.32, 1 + (year - 1) * .025);
-  const currentBudgetCost = Math.round(budget.value * industryCostIndex * scriptEffects.budgetCostMultiplier);
+  const currentBudgetCost = Math.round(budget.value * industryCostIndex * scriptEffects.budgetCostMultiplier * studioStrategy.budgetCostMultiplier * eraEffects.budgetCostMultiplier);
   const currentPromoCost = Math.round(promo.value * industryCostIndex);
   const ensembleActive = scriptEffects.ensemble;
   const selectedEnsembleCast = ensembleCastOptions.find((option) => option.id === ensembleCastId) ?? ensembleCastOptions[0];
   const ensembleCost = ensembleActive ? Math.round(selectedEnsembleCast.cost * industryCostIndex) : 0;
   const castFeeEntries = cast.map((actor) => ({ actorId: actor.id, fee: deals[actor.id]?.fee ?? Math.round(actor.fee * TALENT_COST_SCALE) }));
   const ipCastingPremium = Math.round(calculateReturningCastPremium(ipEffects, castFeeEntries) * scriptEffects.castingCostMultiplier);
-  const talentCost = Math.round((Math.round((director?.fee ?? 0) * TALENT_COST_SCALE) + castFeeEntries.reduce((sum, item) => sum + item.fee, 0)) * scriptEffects.castingCostMultiplier) + ensembleCost + ipCastingPremium;
+  const talentCost = Math.round((Math.round((director?.fee ?? 0) * TALENT_COST_SCALE) + castFeeEntries.reduce((sum, item) => sum + item.fee, 0)) * scriptEffects.castingCostMultiplier * studioStrategy.talentCostMultiplier * eraEffects.talentCostMultiplier) + ensembleCost + ipCastingPremium;
   const totalBeforeRelease = currentBudgetCost + talentCost;
   const productionChain = useMemo(() => generateProductionChain(cast.map((actor) => actor.id), year, { genre: genre.name, budget: budget.name }), [budget.name, cast, genre.name, year]);
   const productionTotals = useMemo(() => resolveProductionChain(productionChain, productionChoices), [productionChain, productionChoices]);
@@ -584,7 +635,7 @@ export default function Home() {
   const overheadCost = Math.round(totalBeforeRelease * .12);
   const totalCost = totalBeforeRelease + overheadCost + currentPromoCost + currentEventCost + rewriteCost;
   const slotCompetitors = useMemo(() => generateCompetitors(slot.id, year, actorPool.map((actor) => ({ id: actor.id, name: actor.name, acting: actor.acting, appeal: actor.appeal, tier: getActorProfile(actor).tier })), cast.map((actor) => actor.id)), [actorPool, cast, slot.id, year]);
-  const competitionPressure = calculateCompetitionPressure(slotCompetitors);
+  const competitionPressure = calculateCompetitionPressure(slotCompetitors) + rivalGenrePressure(year, genre.name) / 100;
   const chemistry = cast.length === 2 ? chemistryScore(cast[0], cast[1]) : null;
   const leadActing = cast.length ? cast.reduce((sum, item) => sum + item.acting + (deals[item.id]?.morale ?? 0) * .2, 0) / cast.length : 0;
   const ensemblePerformance = ensembleActive && director && cast.length === 2 ? resolveEnsembleCast(ensembleCastId, leadActing, chemistry ?? 60, director.skill, director.trait) : null;
@@ -689,6 +740,24 @@ export default function Home() {
     const sourceGenre = genreMarket.find((item) => item.name === lockedGenreName);
     if (sourceGenre) setGenre(sourceGenre);
     resetCreativeProjectState();
+  }
+
+  function chooseStudioPath(pathId: StudioPathId) {
+    if (studioPathCommitted) return;
+    setStudioPathId(pathId);
+    setActivePolicyIds(defaultPoliciesForPath(pathId));
+    setStudioFocusGenres(pathId === "genre" ? [...new Set([genre.name, marketLeader.name])].slice(0, 2) : []);
+  }
+
+  function toggleStudioPolicy(policyId: string) {
+    const policy = currentStudioPolicies.find((item) => item.id === policyId);
+    if (!policy || studioPathXp < policy.unlockAt) return;
+    setActivePolicyIds((current) => current.includes(policyId) ? current.filter((id) => id !== policyId) : current.length < 3 ? [...current, policyId] : current);
+  }
+
+  function toggleStudioFocusGenre(genreName: string) {
+    if (studioPathCommitted || studioPathId !== "genre") return;
+    setStudioFocusGenres((current) => current.includes(genreName) ? current.filter((name) => name !== genreName) : current.length < 2 ? [...current, genreName] : current);
   }
 
   function chooseIpRoute(route: Exclude<IpRouteId, "original">) {
@@ -956,21 +1025,21 @@ export default function Home() {
     const acting = ensemblePerformance?.acting ?? leadActing;
     const leadAppeal = cast.reduce((sum, item) => sum + item.appeal, 0) / cast.length;
     const appeal = ensemblePerformance ? director.appeal * .25 + leadAppeal * .75 * ensembleDownstream.starPowerMultiplier : director.appeal / 3 + leadAppeal * 2 / 3 * scriptEffects.starPowerMultiplier;
-    const contentInput = { scriptScore, directorSkill: director.skill, acting, budgetQuality: budget.quality, fit, eventBonus: productionTotals.quality, chemistry: performanceCoordination, morale: averageMorale + productionTotals.morale, directorMatched: director.genres.includes(genre.name), actorFitRate: cast.filter((actor) => actor.genres.includes(genre.name)).length / cast.length, scriptQualityBonus: ensembleDownstream.qualityBonus + ipEffects.qualityBonus, scriptWordOfMouthBonus: ensembleDownstream.wordOfMouthBonus + ipEffects.wordOfMouth };
+    const contentInput = { scriptScore, directorSkill: director.skill, acting, budgetQuality: budget.quality, fit, eventBonus: productionTotals.quality, chemistry: performanceCoordination, morale: averageMorale + productionTotals.morale, directorMatched: director.genres.includes(genre.name), actorFitRate: cast.filter((actor) => actor.genres.includes(genre.name)).length / cast.length, scriptQualityBonus: ensembleDownstream.qualityBonus + ipEffects.qualityBonus + studioStrategy.qualityBonus + eraEffects.qualityBonus, scriptWordOfMouthBonus: ensembleDownstream.wordOfMouthBonus + ipEffects.wordOfMouth + studioStrategy.wordOfMouthBonus + eraEffects.wordOfMouthBonus };
     const baseContent = buildContentModel(contentInput);
     const expectationDelta = expectationWordOfMouth(baseContent.audienceScore, ipEffects.expectedScore);
     const content = expectationDelta ? buildContentModel({ ...contentInput, scriptWordOfMouthBonus: contentInput.scriptWordOfMouthBonus + expectationDelta }) : baseContent;
     const { quality, wordOfMouth, audienceScore: roundedScore } = content;
     const genreSlotBonus = (slot.id === "spring" && genre.name === "合家欢喜剧") || (slot.id === "summer" && genre.name === "科幻冒险") ? 1.12 : 1;
-    const openingPower = Math.min(99, Math.round(appeal * .4 + genre.heat * .2 + promo.power * .25 + studioReach / 1.18 * 100 * .12 + castTierOpeningBonus * scriptEffects.starPowerMultiplier + scriptEffects.openingPower + ipEffects.openingPower));
-    const release = buildReleaseModel({ appeal, genreHeat: genre.heat, promoCost: promo.value, promoPower: promo.power, budgetCost: budget.value, budgetCapacity: budget.capacity, slotBoost: slot.boost, studioReach, genreSlotBonus, eventMarket: productionTotals.market + rewriteMarketDelta, wordOfMouth, audienceScore: roundedScore, openingPower, competitionPressure, totalCost, investmentAmount: investmentClaimed ? annualInvestment : 0, scheduleRisk: productionTotals.scheduleRisk, retentionBonus: scriptEffects.retention + ipEffects.retention });
+    const openingPower = Math.min(99, Math.round(appeal * .4 + (genre.heat + studioStrategy.genreHeatBonus + eraEffects.genreHeatBonus) * .2 + promo.power * .25 + studioReach / 1.18 * 100 * .12 + castTierOpeningBonus * scriptEffects.starPowerMultiplier + scriptEffects.openingPower + ipEffects.openingPower + studioStrategy.openingPower + eraEffects.openingPower));
+    const release = buildReleaseModel({ appeal, genreHeat: genre.heat + studioStrategy.genreHeatBonus + eraEffects.genreHeatBonus, promoCost: promo.value, promoPower: promo.power, budgetCost: budget.value, budgetCapacity: budget.capacity, slotBoost: slot.boost, studioReach, genreSlotBonus, eventMarket: productionTotals.market + rewriteMarketDelta, wordOfMouth, audienceScore: roundedScore, openingPower, competitionPressure, totalCost, investmentAmount: investmentClaimed ? annualInvestment : 0, scheduleRisk: productionTotals.scheduleRisk, retentionBonus: scriptEffects.retention + ipEffects.retention + studioStrategy.retentionBonus + eraEffects.retentionBonus });
     const { weekDays: days, weekScores, monthDays, weekGross, tailGross, gross, studioRevenue, investorShare, successBonus, profit, breakEvenGross } = release;
     const audience = Math.round(gross * 10000 / 42);
     const trend = days[6] > days[0] * 1.05 ? "口碑逆袭" : days[1] > days[0] && days[6] > days[0] * .72 ? "稳健长线" : days[1] < days[0] * .9 && days[6] < days[0] * .55 ? "高开低走" : "正常回落";
     const scheduleNote = productionTotals.scheduleRisk > 0 ? ` 片场累计 +${productionTotals.scheduleRisk} 档期风险，发行效率降至 ${Math.round(release.scheduleEfficiency * 100)}%。` : " 片场档期风险已控制，不产生额外发行增益。";
     const ipExpectationNote = ipEffects.expectedScore === null ? "" : expectationDelta > 0 ? ` 成片评分超过系列期待 ${ipEffects.expectedScore.toFixed(1)}，IP口碑 +1。` : expectationDelta < 0 ? ` 成片评分未达到系列期待 ${ipEffects.expectedScore.toFixed(1)}，IP口碑 ${expectationDelta}。` : ` 成片评分基本兑现系列期待 ${ipEffects.expectedScore.toFixed(1)}。`;
     const trendNote = `${trend === "口碑逆袭" ? "高口碑抵消同档竞争，路人推荐推动持续增量。" : trend === "高开低走" ? "明星与宣发拉高首日，但剧本口碑未能承接热度。" : trend === "稳健长线" ? "内容、开画与同档竞争较为均衡，首周维持稳定排片。" : "市场热度按常规节奏释放，后续表现由口碑与竞品共同决定。"}${scheduleNote}${ipExpectationNote}`;
-    const awardInput = { year, quality, directorSkill: director.skill, fit, acting: leadActing, chemistry: performanceCoordination, audienceScore: roundedScore, pictureBonus: ensembleDownstream.pictureBonus, directorBonus: ensembleDownstream.directorBonus, actingBonus: scriptEffects.awardActing, chemistryBonus: ensemblePerformance?.awardBonus ?? 0 };
+    const awardInput = { year, quality, directorSkill: director.skill, fit, acting: leadActing, chemistry: performanceCoordination, audienceScore: roundedScore, pictureBonus: ensembleDownstream.pictureBonus + studioStrategy.pictureAwardBonus + eraEffects.pictureAwardBonus, directorBonus: ensembleDownstream.directorBonus + studioStrategy.directorAwardBonus + eraEffects.directorAwardBonus, actingBonus: scriptEffects.awardActing + studioStrategy.actingAwardBonus + eraEffects.actingAwardBonus, chemistryBonus: ensemblePerformance?.awardBonus ?? 0 };
     const nominations = judgeAwards(awardInput, slotCompetitors);
     const awardCap = awardWinCap(awardInput);
     const awards = nominations.filter((nomination) => nomination.won).map((nomination) => nomination.category);
@@ -980,9 +1049,12 @@ export default function Home() {
     const xpGain = careerRewards.xpGain + (goalOutcome?.reward.xp ?? 0);
     const reputationGain = careerRewards.reputationGain + (goalOutcome?.reward.reputation ?? 0);
     const dailyReports = buildDailyReports(title, days, wordOfMouth, weekScores, { director, cast, genre: genre.name, quality, honors: actorHonors });
-    const filmRecord = createFilmHistoryRecord({ year, title, genre: genre.name, gross, awards: awards.length, score: roundedScore, quality, breakEvenGross, directorId: director.id, castIds: cast.map((actor) => actor.id), coreStyleId: scriptBuild.core?.id, buildName: scriptBuild.buildName, traits: [...new Set([...ipEffects.inheritedTraits, ...scriptBuild.finalTraits])], libraryMultiplier: ensembleDownstream.libraryMultiplier, selection: ipSelection, effects: ipEffects });
-    setResult({ quality, gross, profit, score: roundedScore, audience, days, monthDays, weekGross, tailGross, studioRevenue, investorShare, investmentAmount: investmentClaimed ? annualInvestment : 0, successBonus, breakEvenGross, overheadCost, dailyReports, awards, nominations, awardCap, goalOutcome, xpGain, reputationGain, reachUsed: studioReach, wordOfMouth, openingPower, retention: release.retention, trend, trendNote, competitionPressure, scheduleRisk: productionTotals.scheduleRisk, scheduleEfficiency: release.scheduleEfficiency, libraryMultiplier: filmRecord.libraryMultiplier, buildName: scriptBuild.buildName, filmRecord });
+    const filmRecord = createFilmHistoryRecord({ year, title, genre: genre.name, gross, awards: awards.length, score: roundedScore, quality, breakEvenGross, directorId: director.id, castIds: cast.map((actor) => actor.id), coreStyleId: scriptBuild.core?.id, buildName: scriptBuild.buildName, traits: [...new Set([...ipEffects.inheritedTraits, ...scriptBuild.finalTraits])], libraryMultiplier: ensembleDownstream.libraryMultiplier * studioStrategy.libraryMultiplier * eraEffects.libraryMultiplier, selection: ipSelection, effects: ipEffects });
+    const pathXpGain = studioPathId ? studioPathXpGain({ quality, gross, breakEvenGross, awards: awards.length }) : 0;
+    setResult({ quality, gross, profit, score: roundedScore, audience, days, monthDays, weekGross, tailGross, studioRevenue, investorShare, investmentAmount: investmentClaimed ? annualInvestment : 0, successBonus, breakEvenGross, overheadCost, dailyReports, awards, nominations, awardCap, goalOutcome, xpGain, reputationGain, pathXpGain, strategyNotes: combinedStrategyNotes, reachUsed: studioReach, wordOfMouth, openingPower, retention: release.retention, trend, trendNote, competitionPressure, scheduleRisk: productionTotals.scheduleRisk, scheduleEfficiency: release.scheduleEfficiency, libraryMultiplier: filmRecord.libraryMultiplier, buildName: scriptBuild.buildName, filmRecord });
     setStudioXp((value) => value + xpGain);
+    if (pathXpGain) setStudioPathXp((value) => value + pathXpGain);
+    setSeasonStats((current) => addFilmToSeason(current, { gross, awards: awards.length, quality, breakEvenGross }));
     setReputation((value) => Math.max(0, value + reputationGain));
     setProjectCostPaid(totalCost);
     setCash((value) => Math.max(0, value - outstandingProjectCost + (goalOutcome?.reward.cash ?? 0)));
@@ -1008,7 +1080,7 @@ export default function Home() {
       const contract = signedTalents.find((item) => item.actorId === actor.id);
       if (contract?.origin !== "rookie") return;
       const coStarAppeal = Math.max(...cast.filter((item) => item.id !== actor.id).map((item) => item.appeal), actor.appeal);
-      const exposureGain = rookieExposureAppealGain(actor.acting, actor.appeal, coStarAppeal, performanceRatio);
+      const exposureGain = rookieExposureAppealGain(actor.acting, actor.appeal, coStarAppeal, performanceRatio) + studioStrategy.rookieAppealBonus + eraEffects.rookieAppealBonus;
       if (!exposureGain) return;
       rookieExposureByActor.set(actor.id, exposureGain);
       breakoutNotes.push(`${actor.name}凭演技 ${actor.acting} 的银幕表现${coStarAppeal > actor.appeal ? "与高人气搭档带来的曝光" : "获得观众关注"}，额外号召力 +${exposureGain}。`);
@@ -1038,7 +1110,7 @@ export default function Home() {
       const fullIncome = externalAgencyIncome(actor, contract);
       return sum + (castIds.has(actor.id) ? Math.round(fullIncome * .35) : fullIncome);
     }, 0);
-    const operatingCost = yearlyOperatingCost(studioLevel, signedTalents.length, industryCostIndex);
+    const operatingCost = Math.round(yearlyOperatingCost(studioLevel, signedTalents.length, industryCostIndex) * studioStrategy.operatingCostMultiplier * eraEffects.operatingCostMultiplier);
     const evolvedActorPool = actorPool.filter((actor) => !retiredIds.has(actor.id)).map((actor) => {
       const appeared = cast.some((item) => item.id === actor.id);
       const profile = getActorProfile(actor);
@@ -1102,6 +1174,12 @@ export default function Home() {
     setGenreMarket(nextGenreMarket);
     setGenre(nextGenreMarket.find((item) => item.name === genre.name) ?? nextGenreMarket[0]);
     setDirectorPool(nextDirectorPool);
+    if (year % 5 === 0) {
+      const finalStandings = buildSeasonStandings(seasonStats);
+      const rank = Math.max(1, finalStandings.findIndex((entry) => entry.player) + 1);
+      setSeasonArchive((current) => [{ startYear: seasonStats.startYear, endYear: year, rank, score: finalStandings.find((entry) => entry.player)?.score ?? 0, title: seasonResultTitle(rank, seasonStats) }, ...current].slice(0, 6));
+      setSeasonStats(emptySeasonStats(followingYear));
+    }
     setYear((value) => value + 1);
     setTitle("未命名计划");
     setIpSelection({ route: "original", sourceId: null });
@@ -1198,6 +1276,15 @@ export default function Home() {
                 })}{agencyLedger.breakoutNotes?.map((note) => <p className="breakout-note" key={note}>新人出圈 · {note}</p>)}{agencyLedger.appealChanges?.map((note) => <p className="appeal-change-note" key={note}>号召结算 · {note}</p>)}{agencyLedger.salaryChanges?.map((note) => <p className="salary-change-note" key={note}>身价成长 · {note}</p>)}{agencyLedger.tierChanges?.map((note) => <p className="tier-change-note" key={note}>评级变动 · {note}</p>)}{!!agencyLedger.retiredNames?.length && <p>{agencyLedger.retiredNames.join("、")}达到职业生涯终点，正式退休。</p>}{!!agencyLedger.expiredNames.length && <p>{agencyLedger.expiredNames.join("、")}合约到期，已进入成型艺人自由市场。</p>}{!!agencyLedger.withdrawnNames?.length && <p>{agencyLedger.withdrawnNames.join("、")}合约到期后尚未达到B级市场门槛，暂时退出公开选角市场。</p>}</div>}
               </>}
               {year > 1 && <div className="market-cycle-banner"><div><span>YEAR {year} MARKET</span><b>年度电影市场重新洗牌</b></div><dl><dt>当前最热</dt><dd>{marketLeader.name} · {marketLeader.heat}</dd><dt>上升最快</dt><dd>{marketRiser.name} · {(marketRiser.heatChange ?? 0) >= 0 ? "+" : ""}{marketRiser.heatChange ?? 0}</dd><dt>可约导演</dt><dd>{availableDirectors.length} / {directorPool.length} 位</dd></dl></div>}
+              <div className="market-era-card"><div><span>MARKET ERA · {currentMarketEra.years}</span><b>{currentMarketEra.name}</b><p>{currentMarketEra.headline}</p></div><strong>{currentMarketEra.rule}</strong>{nextMarketEra && <aside><small>下一年预告</small><b>{nextMarketEra.name}</b><p>{nextMarketEra.rule}</p></aside>}</div>
+              {year >= 2 && <>
+                <SectionTitle number="厂" title="确立制片厂路线" note={studioPathCommitted ? "厂牌已经确立；每年仍可重配三项经营策略" : "本片开拍后正式锁定，决定未来长期打法"} />
+                {!studioPathCommitted && <div className="studio-path-grid">{studioPaths.map((path) => <button type="button" key={path.id} className={studioPathId === path.id ? "selected" : ""} aria-pressed={studioPathId === path.id} onClick={() => chooseStudioPath(path.id)}><span>{path.code}</span><b>{path.name}</b><p>{path.tagline}</p><small>{path.strength}</small><i>{path.pressure}</i></button>)}</div>}
+                {currentStudioPath && <div className="studio-strategy-panel"><header><div><span>{currentStudioPath.code} · Lv.{strategyLevel(studioPathXp)}</span><b>{currentStudioPath.name}</b><p>{currentStudioPath.strength}；{currentStudioPath.pressure}</p></div><strong>{studioPathXp}<small>厂牌经验</small></strong></header><div className="strategy-xp-track"><i style={{ width: `${Math.min(100, studioPathXp / 90 * 100)}%` }} /></div>{studioPathId === "genre" && <div className="studio-focus-genres"><span>选择两个永久专精题材</span><div>{genreMarket.map((item) => <button type="button" key={item.name} disabled={studioPathCommitted} className={studioFocusGenres.includes(item.name) ? "selected" : ""} onClick={() => toggleStudioFocusGenre(item.name)}>{item.name}</button>)}</div><p>{studioFocusGenres.length}/2 · 锁定厂牌后不可更换</p></div>}<div className="studio-policy-head"><div><span>经营策略</span><b>已启用 {activePolicyIds.length}/3</b></div><p>启用的是规则与代价，不是无条件数值升级。</p></div><div className="studio-policy-grid">{currentStudioPolicies.map((policy) => { const unlocked = studioPathXp >= policy.unlockAt; const active = activePolicyIds.includes(policy.id); return <button type="button" key={policy.id} disabled={!unlocked} className={active ? "active" : ""} aria-pressed={active} onClick={() => toggleStudioPolicy(policy.id)}><span>{unlocked ? active ? "已启用" : "可配置" : `需 ${policy.unlockAt} 经验`}</span><b>{policy.name}</b><small>{policy.upside}</small><i>{policy.pressure}</i></button>; })}</div>{activePolicyIds.length >= 3 && <p className="strategy-slot-note">策略槽已满；先关闭一项，才能启用新的策略。</p>}</div>}
+              </>}
+              <SectionTitle number="竞" title={`五年影业赛季 · 第 ${seasonStats.films + 1}/5 部`} note={`第 ${seasonStats.startYear}—${seasonStats.startYear + 4} 年累计比较，不因单片失利立即结束`} />
+              <div className="rival-plan-grid">{currentRivalPlans.map((plan) => <article key={plan.id} style={{ borderTopColor: plan.color }}><span>{plan.identity}</span><b>{plan.name}</b><p>《{plan.title}》· {plan.genre}</p><small>{plan.approach}{plan.genre === genre.name ? ` · 同题材压力 +${plan.pressure}%` : ""}</small></article>)}</div>
+              <div className="season-standing"><header><span>SEASON STANDING</span><b>当前行业排名</b><p>{seasonStats.films ? `已完成 ${seasonStats.films} 部作品` : "首部作品完成后开始计分"}</p></header>{seasonStandings.map((entry, index) => <div className={entry.player ? "player" : ""} key={entry.id}><span>{index + 1}</span><b>{entry.name}</b><small>票房 ¥{money(entry.gross)} · {entry.awards} 奖 · {entry.hits} 爆款</small><strong>{entry.score}</strong></div>)}{!!seasonArchive.length && <footer>上届荣誉 · {seasonArchive[0].title}（第 {seasonArchive[0].rank} 名）</footer>}</div>
               <SectionTitle number="IP" title="选择本年项目来源" note="原创立项，或延续近三部作品形成跨年度系列" />
               {!!recentFilmRecords.length && <div className="ip-history-list"><header><span>RECENT FILMS</span><b>近三部作品档案</b></header>{recentFilmRecords.map((film, index) => <article key={film.id}><span>{index + 1}</span><div><b>《{film.title}》</b><p>{film.genre ? `${film.genre} · 开发IP后题材固定` : "旧档未记录题材 · 首次开发时归档"}</p></div><i className={isIpEligible(film) ? "eligible" : "locked"}>{isIpEligible(film) ? "可开发IP" : "尚未达标"}</i></article>)}</div>}
               <div className="ip-source-grid">
@@ -1219,7 +1306,7 @@ export default function Home() {
               <SectionTitle number="2" title="制作规模" note={`公司当前可用资金 ¥${money(cash)}`} />
               <div className="budget-choice">{budgets.map((item) => <button key={item.name} className={budget.name === item.name ? "selected" : ""} onClick={() => setBudget(item)}>{item.name}<small>¥{money(Math.round(item.value * industryCostIndex))}</small></button>)}</div>
               <div className="cost-index-note"><span>行业成本指数 ×{industryCostIndex.toFixed(2)}</span><p>场地、器材、保险与人工会随年份上涨；高等级公司也承担更高年度运营成本。</p></div>
-              <ActionBar label={annualGoal ? `${routeName(ipSelection.route)} · ${annualGoal.title} · ${title || "未命名"}` : "请先选择年度委托"} detail={`制作预算 ¥${money(currentBudgetCost)} · 确认后立即支付${selectedIpSource ? ` · 品牌热度 ${selectedIpSource.brandHeat}` : ""}${annualGoal ? ` · ${annualGoal.description}` : ""}`} button="开始剧本创作" disabled={!annualGoal || !title.trim() || projectPaymentDelta(currentBudgetCost, projectCostPaid) > cash} onClick={() => { setAnnualGoalLocked(true); commitProjectCost(currentBudgetCost, 1); }} />
+              <ActionBar label={!studioStrategyReady ? "请先确立厂牌路线" : annualGoal ? `${routeName(ipSelection.route)} · ${annualGoal.title} · ${title || "未命名"}` : "请先选择年度委托"} detail={!studioStrategyReady ? studioPathId === "genre" ? "类型片工坊需要选满两个永久专精题材" : "第二年起，公司需要选择一条长期经营路线" : `制作预算 ¥${money(currentBudgetCost)} · 确认后立即支付${currentStudioPath ? ` · ${currentStudioPath.name}` : ""}${selectedIpSource ? ` · 品牌热度 ${selectedIpSource.brandHeat}` : ""}${annualGoal ? ` · ${annualGoal.description}` : ""}`} button="开始剧本创作" disabled={!studioStrategyReady || !annualGoal || !title.trim() || projectPaymentDelta(currentBudgetCost, projectCostPaid) > cash} onClick={() => { if (studioPathId) setStudioPathCommitted(true); setAnnualGoalLocked(true); commitProjectCost(currentBudgetCost, 1); }} />
             </>
           )}
 
@@ -1363,6 +1450,8 @@ export default function Home() {
                 <div className="month-settlement"><div><small>首周累计</small><b>¥{money(result.weekGross)}</b><span>直播展示的第 1—7 天</span></div><i>+</i><div><small>长尾票房</small><b>¥{money(result.tailGross)}</b><span>口碑、竞品与周末效应测算第 8—30 天</span></div><i>=</i><div className="month-total"><small>30日最终票房</small><b>¥{money(result.gross)}</b><span>片方回款 ¥{money(result.studioRevenue)}{result.investorShare ? ` · 投资方分成 ¥${money(result.investorShare)}` : ""} · 回本线 ¥{money(result.breakEvenGross)}{result.successBonus ? ` · 税费与主创分成 ¥${money(result.successBonus)}` : ""}</span></div></div>
                 <SectionTitle number="结" title="项目与生涯结算" note={`院线分账后片方按 34% 回款${result.investorShare ? "，先结算投资方分成" : ""}，剩余盈利继续结算税费与主创分成`} />
                 <div className="growth-result"><div><span>制片人经验</span><b>+{result.xpGain} XP</b><small>当前 Lv.{studioLevel} · {studioXpProgress}/180</small></div><div><span>行业声望</span><b className={result.reputationGain >= 0 ? "positive" : "negative"}>{result.reputationGain >= 0 ? "+" : ""}{result.reputationGain}</b><small>当前声望 {reputation}</small></div><div><span>项目收益</span><b className={result.profit >= 0 ? "positive" : "negative"}>{result.profit >= 0 ? "+" : "-"}¥{money(Math.abs(result.profit))}</b><small>30日票房 ¥{money(result.gross)} · 片方分账 ¥{money(result.studioRevenue)}{result.investorShare ? ` · 投资方分成 -¥${money(result.investorShare)}` : ""}</small></div></div>
+                {currentStudioPath && <div className="strategy-result-card"><header><div><span>STUDIO IDENTITY</span><b>{currentStudioPath.name} · 厂牌经验 +{result.pathXpGain ?? 0}</b></div><strong>Lv.{strategyLevel(studioPathXp)}</strong></header><div>{result.strategyNotes?.map((note) => <p key={note}>{note}</p>)}</div></div>}
+                <div className="season-result-card"><header><span>五年赛季进度</span><b>{seasonStats.films}/5 部</b><p>{year % 5 === 0 ? "本年度经营完成后进行赛季总评" : `距离阶段总评还有 ${5 - seasonStats.films} 部`}</p></header>{seasonStandings.slice(0, 4).map((entry, index) => <div className={entry.player ? "player" : ""} key={entry.id}><span>{index + 1}</span><b>{entry.name}</b><small>¥{money(entry.gross)} · {entry.awards} 奖</small><strong>{entry.score}</strong></div>)}</div>
                 <div className="career-update"><span>艺人动态</span><b>{cast.map((actor) => actor.name).join("、")}获得项目经验；下一年度的号召力和身价将按照票房回本倍数重新评估。自社新人若以高演技搭档高人气演员，还会获得额外曝光成长。</b></div>
                 {result.filmRecord && <><SectionTitle number="IP" title={result.filmRecord.route === "original" ? "作品IP潜力" : "系列资产更新"} note={result.filmRecord.route === "original" ? "成功作品会成为下一年度的项目来源" : `《${result.filmRecord.seriesTitle}》第 ${result.filmRecord.seriesEntry} 部`} /><div className={`ip-result-card ${isIpEligible(result.filmRecord) ? "qualified" : "developing"}`}><span>{isIpEligible(result.filmRecord) ? "✓" : "↗"}</span><div><small>{routeName(result.filmRecord.route ?? "original")} · BRAND ASSET</small><b>{result.filmRecord.route === "original" ? isIpEligible(result.filmRecord) ? "IP开发资格已解锁" : "作品尚在积累品牌认知" : `《${result.filmRecord.seriesTitle}》系列继续成长`}</b><p>品牌热度 {result.filmRecord.brandHeat} · 系列疲劳 {result.filmRecord.fatigue} · 片库长尾 ×{(result.filmRecord.libraryMultiplier ?? 1).toFixed(2)}</p></div><strong>{result.filmRecord.route === "original" ? isIpEligible(result.filmRecord) ? "下一年可选择正统续集、角色衍生或重启" : "提高评分、回本倍数或赢得奖项即可解锁" : `第 ${result.filmRecord.seriesEntry} 部已写入系列履历`}</strong></div></>}
                 {annualGoal && result.goalOutcome && <><SectionTitle number="委" title="年度委托结算" note={result.goalOutcome.completed ? "目标达成，额外奖励已发放" : "未达成不扣除资源，保留本次经验"} /><div className={`goal-result ${result.goalOutcome.completed ? "complete" : "missed"}`}><span>{result.goalOutcome.completed ? "✓" : "↗"}</span><div><small>{annualGoal.title} · {"★".repeat(annualGoal.stars)}</small><b>{result.goalOutcome.completed ? "委托完成" : "本年惜未完成"}</b><p>{result.goalOutcome.explanation}</p><i>{result.goalOutcome.progressLabel}</i></div><strong>{result.goalOutcome.completed ? `+¥${money(result.goalOutcome.reward.cash)} · +${result.goalOutcome.reward.xp} XP · +${result.goalOutcome.reward.reputation} 声望` : "下一年会刷新三个新目标"}</strong></div></>}

@@ -73,6 +73,85 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
 .annual-goal-grid small { color: #5e686b; font-size: 9px; font-weight: 700; line-height: 1.4; -webkit-text-fill-color: #5e686b; }
 .annual-goal-grid i { position: absolute; right: 12px; top: 12px; padding: 4px 7px; border-radius: 99px; background: var(--orange); color: white; font-size: 7px; font-style: normal; font-weight: 800; }
 
+.market-era-card { display: grid; grid-template-columns: 1.1fr .9fr; gap: 10px; margin: 0 0 18px; padding: 14px; border: 1px solid rgba(91,181,197,.28); border-radius: 6px; background: linear-gradient(135deg, rgba(11,35,45,.96), rgba(26,45,49,.92)); color: #e9f3f4; }
+.market-era-card > div span, .market-era-card > div b, .market-era-card > div p { display: block; }
+.market-era-card > div span { color: #74c9d7; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
+.market-era-card > div b { margin: 5px 0; color: #fff; font-size: 16px; }
+.market-era-card > div p { margin: 0; color: #a9c1c5; font-size: 10px; line-height: 1.5; }
+.market-era-card > strong { align-self: center; color: #ffd0c2; font-size: 10px; line-height: 1.6; }
+.market-era-card > aside { grid-column: 1 / -1; display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 8px; padding: 9px 10px; border-left: 3px solid #e2b850; background: rgba(226,184,80,.09); }
+.market-era-card > aside small { color: #e7c96d; font-size: 9px; font-weight: 900; }
+.market-era-card > aside b { color: #fff; font-size: 11px; }
+.market-era-card > aside p { margin: 0; color: #a9c1c5; font-size: 9px; line-height: 1.45; }
+
+.studio-path-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.studio-path-grid button { min-height: 138px; padding: 12px; border: 1px solid rgba(91,181,197,.24); border-radius: 5px; background: rgba(8,25,33,.9); color: #dcebed; text-align: left; cursor: pointer; }
+.studio-path-grid button.selected { border-color: #ff7653; background: linear-gradient(145deg, rgba(78,40,32,.8), rgba(9,27,35,.96)); box-shadow: inset 3px 0 #ff7653; }
+.studio-path-grid span, .studio-path-grid b, .studio-path-grid p, .studio-path-grid small, .studio-path-grid i { display: block; }
+.studio-path-grid span { color: #75ccd9; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
+.studio-path-grid b { margin: 6px 0; color: #fff; font-size: 13px; }
+.studio-path-grid p { margin: 0 0 8px; color: #a4bdc1; font-size: 10px; line-height: 1.5; }
+.studio-path-grid small { color: #75d0b7; font-size: 9px; line-height: 1.4; }
+.studio-path-grid i { margin-top: 4px; color: #ff9b82; font-size: 9px; font-style: normal; line-height: 1.4; }
+
+.studio-strategy-panel { margin: 0 0 18px; padding: 13px; border: 1px solid rgba(91,181,197,.28); border-radius: 6px; background: rgba(7,24,32,.92); color: #dcebed; }
+.studio-strategy-panel > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.studio-strategy-panel > header span { color: #75ccd9; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
+.studio-strategy-panel > header b { display: block; margin: 4px 0; color: #fff; font-size: 15px; }
+.studio-strategy-panel > header p { margin: 0; color: #91adb2; font-size: 9px; line-height: 1.45; }
+.studio-strategy-panel > header strong { color: #ffd05f; font-size: 21px; text-align: right; }
+.studio-strategy-panel > header strong small { display: block; color: #819da2; font-size: 8px; }
+.strategy-xp-track { height: 5px; margin: 11px 0 13px; overflow: hidden; background: rgba(255,255,255,.09); }
+.strategy-xp-track i { display: block; height: 100%; background: linear-gradient(90deg, #48a9bb, #ffd05f); }
+.studio-focus-genres { margin-bottom: 12px; padding: 10px; border: 1px dashed rgba(91,181,197,.28); }
+.studio-focus-genres > span { color: #b9cdd0; font-size: 10px; font-weight: 850; }
+.studio-focus-genres > div { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+.studio-focus-genres button { padding: 6px 8px; border: 1px solid rgba(91,181,197,.24); background: rgba(30,64,72,.35); color: #aac2c6; font-size: 9px; }
+.studio-focus-genres button.selected { border-color: #ff7653; background: rgba(255,118,83,.18); color: #fff; }
+.studio-focus-genres p { margin: 0; color: #819da2; font-size: 9px; }
+.studio-policy-head { display: flex; justify-content: space-between; align-items: end; gap: 10px; margin-bottom: 8px; }
+.studio-policy-head span { color: #ff8d70; font-size: 9px; font-weight: 900; }
+.studio-policy-head b { display: block; margin-top: 2px; color: #fff; font-size: 12px; }
+.studio-policy-head p { max-width: 52%; margin: 0; color: #819da2; font-size: 9px; line-height: 1.4; text-align: right; }
+.studio-policy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.studio-policy-grid button { min-height: 112px; padding: 10px; border: 1px solid rgba(91,181,197,.18); border-radius: 4px; background: rgba(17,42,51,.64); color: #d5e5e7; text-align: left; cursor: pointer; }
+.studio-policy-grid button.active { border-color: #ff7653; background: rgba(89,44,35,.54); box-shadow: inset 3px 0 #ff7653; }
+.studio-policy-grid button:disabled { opacity: .48; cursor: not-allowed; }
+.studio-policy-grid span, .studio-policy-grid b, .studio-policy-grid small, .studio-policy-grid i { display: block; }
+.studio-policy-grid span { color: #75ccd9; font-size: 8px; font-weight: 900; }
+.studio-policy-grid b { margin: 5px 0 7px; color: #fff; font-size: 11px; }
+.studio-policy-grid small { color: #78cfb6; font-size: 9px; line-height: 1.4; }
+.studio-policy-grid i { margin-top: 4px; color: #ff9b82; font-size: 9px; font-style: normal; line-height: 1.4; }
+.strategy-slot-note { margin: 9px 0 0; color: #e8c56a; font-size: 9px; text-align: right; }
+
+.rival-plan-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 10px; }
+.rival-plan-grid article { min-width: 0; padding: 10px; border: 1px solid rgba(91,181,197,.2); border-top: 3px solid; border-radius: 4px; background: rgba(8,25,33,.88); color: #dcebed; }
+.rival-plan-grid span, .rival-plan-grid b, .rival-plan-grid p, .rival-plan-grid small { display: block; }
+.rival-plan-grid span { color: #7f9fa5; font-size: 8px; }
+.rival-plan-grid b { margin: 5px 0; color: #fff; font-size: 11px; }
+.rival-plan-grid p { margin: 0 0 6px; color: #b9d0d3; font-size: 9px; line-height: 1.4; }
+.rival-plan-grid small { color: #ffab94; font-size: 8px; line-height: 1.4; }
+.season-standing, .season-result-card { margin-bottom: 18px; padding: 11px; border: 1px solid rgba(91,181,197,.22); border-radius: 5px; background: rgba(8,25,33,.9); color: #dcebed; }
+.season-standing > header, .season-result-card > header { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 2px 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(91,181,197,.14); }
+.season-standing > header span, .season-result-card > header span { color: #75ccd9; font-size: 8px; font-weight: 900; }
+.season-standing > header b, .season-result-card > header b { color: #fff; font-size: 12px; }
+.season-standing > header p, .season-result-card > header p { grid-column: 2; grid-row: 1 / 3; margin: 0; color: #819da2; font-size: 8px; text-align: right; }
+.season-standing > div, .season-result-card > div { display: grid; grid-template-columns: 22px minmax(0,1fr) auto 34px; align-items: center; gap: 7px; padding: 8px 4px; border-bottom: 1px solid rgba(91,181,197,.1); }
+.season-standing > div.player, .season-result-card > div.player { background: rgba(255,118,83,.1); color: #fff; }
+.season-standing > div > span, .season-result-card > div > span { color: #ff8d70; font-size: 10px; font-weight: 900; text-align: center; }
+.season-standing > div > b, .season-result-card > div > b { font-size: 10px; }
+.season-standing > div > small, .season-result-card > div > small { color: #89a6ab; font-size: 8px; }
+.season-standing > div > strong, .season-result-card > div > strong { color: #ffd05f; font-size: 11px; text-align: right; }
+.season-standing footer { padding-top: 9px; color: #e6c767; font-size: 9px; text-align: right; }
+
+.strategy-result-card { margin: 12px 0; padding: 12px; border: 1px solid rgba(255,118,83,.44); border-radius: 5px; background: linear-gradient(135deg, rgba(72,37,31,.82), rgba(8,26,34,.94)); color: #e8f1f2; }
+.strategy-result-card header { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.strategy-result-card header span { color: #ff9b82; font-size: 8px; font-weight: 900; }
+.strategy-result-card header b { display: block; margin-top: 4px; color: #fff; font-size: 12px; }
+.strategy-result-card header strong { color: #ffd05f; font-size: 16px; }
+.strategy-result-card > div { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+.strategy-result-card p { margin: 0; padding: 7px; background: rgba(255,255,255,.04); color: #a9c1c5; font-size: 9px; line-height: 1.45; }
+
 .ip-history-list { margin: 0 0 10px; padding: 11px; border: 1px solid #aebfc1; border-radius: 14px; background: #edf4f2; color: #172327; }
 .ip-history-list > header { display: flex; align-items: baseline; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(42,91,91,.16); }
 .ip-history-list > header span { color: #287061; font-size: 8px; font-weight: 900; letter-spacing: .09em; }
@@ -1313,6 +1392,17 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(240, 90, 49,
 @keyframes feed-rise { from { opacity: .2; transform: translateY(46px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 650px) {
+  .market-era-card { grid-template-columns: 1fr; }
+  .market-era-card > aside { grid-template-columns: auto 1fr; }
+  .market-era-card > aside p { grid-column: 1 / -1; font-size: 10px; }
+  .rival-plan-grid { grid-template-columns: 1fr; }
+  .rival-plan-grid article { min-height: 78px; display: grid; grid-template-columns: 1fr auto; align-content: center; gap: 3px 10px; }
+  .rival-plan-grid article p, .rival-plan-grid article small { text-align: right; }
+  .rival-plan-grid article p { grid-column: 2; grid-row: 1 / 3; font-size: 10px; }
+  .rival-plan-grid article small { grid-column: 1 / -1; margin-top: 4px; font-size: 9px; }
+  .season-standing > div, .season-result-card > div { grid-template-columns: 22px minmax(0,1fr) 36px; }
+  .season-standing > div > small, .season-result-card > div > small { grid-column: 2; }
+  .season-standing > div > strong, .season-result-card > div > strong { grid-column: 3; grid-row: 1 / 3; }
   .investment-ad { grid-template-columns: 1fr; }
   .investment-ad button { width: 100%; }
   .studio-hub { height: calc(100dvh - 148px); min-height: 520px; padding: 0 12px; background-image: url("/images/studio-prototype/mobile/studio-hub-mobile-v1.webp"); background-position: center; }

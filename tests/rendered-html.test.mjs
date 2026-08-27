@@ -42,7 +42,7 @@ test("server-renders the visual movie studio hub", async () => {
 });
 
 test("keeps the mobile shell separate from simulation systems", async () => {
-  const [page, layout, mobileUi, css, economy, scriptEngine, scriptBuildSystem, gameSystems, ipSystem, talentSystem, competitionSystem, marketSystem, staticEntry] = await Promise.all([
+  const [page, layout, mobileUi, css, economy, scriptEngine, scriptBuildSystem, gameSystems, ipSystem, talentSystem, competitionSystem, marketSystem, studioStrategySystem, staticEntry] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/mobile-ui.tsx", import.meta.url), "utf8"),
@@ -55,6 +55,7 @@ test("keeps the mobile shell separate from simulation systems", async () => {
     readFile(new URL("../app/talent-system.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/competition-system.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/market-system.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/studio-strategy-system.ts", import.meta.url), "utf8"),
     readFile(new URL("../static-site/main.tsx", import.meta.url), "utf8"),
   ]);
 
@@ -74,6 +75,14 @@ test("keeps the mobile shell separate from simulation systems", async () => {
   assert.match(page, /每个制片年一次/);
   assert.match(page, /片方回款的10%/);
   assert.match(page, /选择本年项目来源/);
+  assert.match(page, /确立制片厂路线/);
+  assert.match(page, /每年仍可重配三项经营策略/);
+  assert.match(page, /五年影业赛季/);
+  assert.match(page, /下一年预告/);
+  assert.match(page, /rivalGenrePressure\(year, genre\.name\)/);
+  assert.match(page, /studioStrategy\.qualityBonus \+ eraEffects\.qualityBonus/);
+  assert.match(studioStrategySystem, /export const studioPaths/);
+  assert.match(studioStrategySystem, /export function buildSeasonStandings/);
   assert.match(page, /近三部作品档案/);
   assert.match(page, /开发IP后题材固定/);
   assert.match(page, /系列题材已锁定/);

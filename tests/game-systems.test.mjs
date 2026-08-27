@@ -5,6 +5,7 @@ import { annualInvestmentAmount, boxOfficeSettlementTarget, buildAudienceScoreCu
 import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts";
 import { evaluateScript, getScriptQuestionBank, getScriptQuestions, rewriteScript } from "../app/script-engine.ts";
 import { coreStylesByGenre, deriveScriptBuild, describeBeginnerBuildChange, describeBuildChange, describeCoreStyle, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, normalizeSequentialScriptProgress, resolveEnsembleCast, resolveEnsembleDownstream, scriptConnections, scriptQuestionState, summarizeScriptDownstream } from "../app/script-build-system.ts";
+import { addFilmToSeason, buildSeasonStandings, defaultPoliciesForPath, emptySeasonStats, marketEraForYear, policiesForPath, resolveMarketEraEffects, resolveStudioStrategy, rivalGenrePressure, rivalPlansForYear, strategyLevel, studioPathXpGain, studioPaths, summarizeStrategyEffects, upcomingMarketEra } from "../app/studio-strategy-system.ts";
 import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, resolveProductionChain } from "../app/game-systems.ts";
 import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, normalizeFilmHistory, resolveIpGenre, resolveIpProjectEffects } from "../app/ip-system.ts";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
@@ -588,6 +589,67 @@ test("every IP route inherits its source genre and legacy films archive the curr
   assert.equal(resolveIpGenre(hitIpSource, "都市爱情"), "动作");
   assert.equal(resolveIpGenre({ ...hitIpSource, genre: undefined }, "都市爱情"), "都市爱情");
   assert.equal(resolveIpGenre(null, "犯罪悬疑"), "犯罪悬疑");
+});
+
+test("four studio identities each offer six bounded tradeoff policies and three opening choices", () => {
+  assert.equal(studioPaths.length, 4);
+  for (const path of studioPaths) {
+    const policies = policiesForPath(path.id);
+    assert.equal(policies.length, 6);
+    assert.equal(defaultPoliciesForPath(path.id).length, 3);
+    assert.ok(policies.every((policy) => policy.upside && policy.pressure));
+  }
+  assert.deepEqual([0, 25, 55, 90].map(strategyLevel), [1, 2, 3, 4]);
+  const context = { budgetName: "大片级", genre: "科幻冒险", isIp: true, directorMatched: true, castAppeal: 90, hasRookie: false, signedCastCount: 1 };
+  const commercial = resolveStudioStrategy("commercial", ["wide-release", "star-vehicle", "industrial-scale"], 90, [], context);
+  assert.ok(commercial.openingPower > 0 && commercial.qualityBonus > 0);
+  assert.ok(commercial.budgetCostMultiplier > 1 && commercial.talentCostMultiplier > 1 && commercial.retentionBonus < 0);
+  assert.ok(commercial.openingPower <= 8 && commercial.qualityBonus <= 6);
+  assert.ok(summarizeStrategyEffects("厂牌", commercial).some((line) => line.includes("预算") && line.includes("开画")) === false, "separate summaries keep production and market effects readable");
+  assert.ok(summarizeStrategyEffects("厂牌", commercial).some((line) => line.includes("预算")));
+  assert.ok(summarizeStrategyEffects("厂牌", commercial).some((line) => line.includes("开画")));
+  const locked = resolveStudioStrategy("commercial", ["market-blitz"], 20, [], context);
+  assert.equal(locked.genreHeatBonus, 0, "locked policies must not apply early");
+});
+
+test("genre specialization and market eras change rules without one permanent best answer", () => {
+  const focusContext = { budgetName: "标准制作", genre: "犯罪悬疑", isIp: false, directorMatched: true, castAppeal: 76, hasRookie: false, signedCastCount: 0 };
+  const focused = resolveStudioStrategy("genre", ["type-bible", "cult-audience", "cross-genre"], 30, ["犯罪悬疑", "科幻冒险"], focusContext);
+  const outside = resolveStudioStrategy("genre", ["type-bible", "cult-audience", "cross-genre"], 30, ["都市爱情", "科幻冒险"], focusContext);
+  assert.ok(focused.qualityBonus > outside.qualityBonus);
+  assert.ok(focused.retentionBonus > outside.retentionBonus);
+  assert.ok(outside.wordOfMouthBonus >= 0, "cross-genre experimentation offsets the base outside-focus penalty");
+  assert.equal(marketEraForYear(3).name, "口碑回潮");
+  assert.equal(upcomingMarketEra(2).name, "口碑回潮");
+  const bubbleBig = resolveMarketEraEffects(6, { ...focusContext, budgetName: "大片级" });
+  const bubbleSmall = resolveMarketEraEffects(6, { ...focusContext, budgetName: "小成本" });
+  assert.ok(bubbleBig.openingPower > bubbleSmall.openingPower);
+  assert.ok(bubbleBig.budgetCostMultiplier > bubbleSmall.budgetCostMultiplier);
+  assert.ok(bubbleSmall.retentionBonus > 0);
+});
+
+test("persistent rivals announce deterministic projects and create visible same-genre pressure", () => {
+  const plans = rivalPlansForYear(4);
+  assert.deepEqual(plans, rivalPlansForYear(4));
+  assert.equal(plans.length, 3);
+  assert.equal(new Set(plans.map((plan) => plan.name)).size, 3);
+  assert.ok(plans.every((plan) => plan.genre && plan.title && plan.pressure > 0));
+  assert.equal(rivalGenrePressure(4, "不存在的题材"), 0);
+  assert.ok(rivalGenrePressure(4, plans[0].genre) >= plans[0].pressure);
+});
+
+test("five-film seasons reward balanced long-term performance and keep rivals competitive", () => {
+  let stats = emptySeasonStats(1);
+  for (let year = 1; year <= 5; year += 1) {
+    stats = addFilmToSeason(stats, { gross: 52000 + year * 7000, awards: year % 2, quality: 80 + year, breakEvenGross: 40000 });
+  }
+  assert.equal(stats.films, 5);
+  const standings = buildSeasonStandings(stats);
+  assert.equal(standings.length, 4);
+  assert.equal(new Set(standings.map((entry) => entry.id)).size, 4);
+  assert.ok(standings.every((entry) => entry.films === 5 && entry.score > 0));
+  assert.ok(standings.some((entry) => entry.player));
+  assert.ok(studioPathXpGain({ quality: 90, gross: 70000, breakEvenGross: 40000, awards: 2 }) > studioPathXpGain({ quality: 70, gross: 30000, breakEvenGross: 40000, awards: 0 }));
 });
 
 test("beginner feedback reveals one plain-language consequence only after commitment", () => {
