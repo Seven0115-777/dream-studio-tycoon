@@ -325,6 +325,37 @@ export function describeBuildChange(before: ScriptBuild, after: ScriptBuild) {
   return notes.join("；") || "本次选择调整了关键词，但未改变已激活组合。";
 }
 
+export function describeBeginnerBuildChange(before: ScriptBuild, after: ScriptBuild) {
+  if (after.core?.id !== before.core?.id) return after.core ? `故事方向确定为「${after.core.name}」，接下来用选择让它逐渐成型。` : "故事方向尚未确定。";
+  const newEngine = after.activeEngines.find((engine) => !before.activeEngines.includes(engine));
+  if (newEngine) return `核心路线已经成型：解锁「${newEngine}」。`;
+  const newConnection = after.connections.find((connection) => !before.connections.some((item) => item.id === connection.id));
+  if (newConnection) return `发现意外组合：形成「${newConnection.name}」。`;
+  const repairedFlaw = after.repairedFlaws.find((flaw) => !before.repairedFlaws.includes(flaw));
+  if (repairedFlaw) return `前面的风险得到补救：「${repairedFlaw}」已解决。`;
+  const newFlaw = after.unresolvedFlaws.find((flaw) => !before.unresolvedFlaws.includes(flaw));
+  if (newFlaw) return `这个选择埋下了「${newFlaw}」风险，后面仍有机会补救。`;
+  if (after.alignedChoices > before.alignedChoices) return "这个选择呼应了核心方向，路线变得更清晰。";
+  return "故事获得了新的侧重，真正效果将在定稿时揭晓。";
+}
+
+export function normalizeSequentialScriptProgress(questionIds: string[], answers: Record<string, string>, savedCommittedCount?: number) {
+  const normalizedAnswers: Record<string, string> = {};
+  for (const questionId of questionIds) {
+    if (!answers[questionId]) break;
+    normalizedAnswers[questionId] = answers[questionId];
+  }
+  const answeredCount = Object.keys(normalizedAnswers).length;
+  const lastQuestionIndex = Math.max(0, questionIds.length - 1);
+  const inferredCommittedCount = Math.max(0, answeredCount - 1);
+  const committedCount = Math.max(0, Math.min(lastQuestionIndex, answeredCount, savedCommittedCount ?? inferredCommittedCount));
+  return { answers: normalizedAnswers, committedCount };
+}
+
+export function scriptQuestionState(questionIndex: number, committedCount: number) {
+  return questionIndex < committedCount ? "locked" : questionIndex === committedCount ? "current" : "upcoming";
+}
+
 export function summarizeScriptDownstream(effect: ScriptDownstream) {
   const signed = (value: number) => `${value >= 0 ? "+" : ""}${Number(value.toFixed(2))}`;
   const summary: string[] = [];

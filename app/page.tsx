@@ -6,7 +6,7 @@ import { calculateCompetitionPressure, generateCompetitors, type CompetitorMovie
 import { annualInvestmentAmount, boxOfficeSettlementTarget, buildContentModel, buildReleaseModel, calculateCareerRewards, projectPaymentDelta, scheduleRiskMultiplier, settleAnnualCompanyCash, studioReachMultiplier, yearlyOperatingCost } from "./economy";
 import { evolveDirectorMarket, evolveGenreMarket, type MarketDirector } from "./market-system";
 import { evaluateScript, getScriptQuestions, rewriteScript, type RewriteDirection, type ScriptReport } from "./script-engine";
-import { deriveScriptBuild, describeBuildChange, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, resolveEnsembleCast, resolveEnsembleDownstream, summarizeScriptDownstream, type EnsembleCastId } from "./script-build-system";
+import { deriveScriptBuild, describeBeginnerBuildChange, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, normalizeSequentialScriptProgress, resolveEnsembleCast, resolveEnsembleDownstream, scriptQuestionState, summarizeScriptDownstream, type EnsembleCastId } from "./script-build-system";
 import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, resolveProductionChain, type AwardNomination, type GoalOutcome, type ProductionChoice } from "./game-systems";
 import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, findIpSource, ipRoutes, isIpEligible, normalizeFilmHistory, resolveIpProjectEffects, routeName, suggestIpTitle, type FilmHistoryRecord, type IpProjectSelection, type IpRouteId } from "./ip-system";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, externalAgencyIncome, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
@@ -48,6 +48,7 @@ type LocalGameSave = {
   genreName: string;
   budgetName: string;
   scriptAnswers: Record<string, string>;
+  scriptCommittedCount?: number;
   scriptReport: ScriptReport | null;
   directorId: number | null;
   genreMarket?: Genre[];
@@ -315,6 +316,7 @@ export default function Home() {
   const [genre, setGenre] = useState(genres[0]);
   const [budget, setBudget] = useState(budgets[1]);
   const [scriptAnswers, setScriptAnswers] = useState<Record<string, string>>({});
+  const [scriptCommittedCount, setScriptCommittedCount] = useState(0);
   const [scriptReport, setScriptReport] = useState<ScriptReport | null>(null);
   const [scriptFeedback, setScriptFeedback] = useState("");
   const [scriptFeedbackQuestionId, setScriptFeedbackQuestionId] = useState<string | null>(null);
@@ -392,6 +394,9 @@ export default function Home() {
         });
         const restoredGenres = save.genreMarket?.length ? save.genreMarket : genres;
         const restoredDirectors = save.directorPool?.length ? save.directorPool : directors;
+        const restoredGenre = restoredGenres.find((item) => item.name === save.genreName) ?? restoredGenres[0];
+        const restoredQuestions = getScriptQuestions(restoredGenre.name, save.year);
+        const restoredScriptProgress = normalizeSequentialScriptProgress(restoredQuestions.map((question) => question.id), save.scriptAnswers ?? {}, save.scriptCommittedCount);
         setYear(save.year);
         setCash(save.cash);
         setStudioXp(save.studioXp);
@@ -400,9 +405,10 @@ export default function Home() {
         setStage(restoredStage >= 5 && !save.result ? 0 : restoredStage);
         setTitle(save.title);
         setGenreMarket(restoredGenres);
-        setGenre(restoredGenres.find((item) => item.name === save.genreName) ?? restoredGenres[0]);
+        setGenre(restoredGenre);
         setBudget(budgets.find((item) => item.name === save.budgetName) ?? budgets[1]);
-        setScriptAnswers(save.scriptAnswers ?? {});
+        setScriptAnswers(restoredScriptProgress.answers);
+        setScriptCommittedCount(restoredScriptProgress.committedCount);
         setScriptReport(save.scriptReport ?? null);
         setDirectorPool(restoredDirectors);
         setDirector(restoredDirectors.find((item) => item.id === save.directorId) ?? null);
@@ -485,6 +491,7 @@ export default function Home() {
       genreMarket,
       budgetName: budget.name,
       scriptAnswers,
+      scriptCommittedCount,
       scriptReport,
       directorId: director?.id ?? null,
       directorPool,
@@ -518,7 +525,7 @@ export default function Home() {
       history,
     };
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  }, [actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, deals, director?.id, directorPool, ensembleCastId, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, ipSelection.route, ipSelection.sourceId, productionChoices, productionLocked, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieRefreshYear, saveReady, scriptAnswers, scriptReport, signedTalents, slot.id, stage, studioXp, title, year]);
+  }, [actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, deals, director?.id, directorPool, ensembleCastId, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, ipSelection.route, ipSelection.sourceId, productionChoices, productionLocked, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieRefreshYear, saveReady, scriptAnswers, scriptCommittedCount, scriptReport, signedTalents, slot.id, stage, studioXp, title, year]);
 
   const studioLevel = Math.min(10, 1 + Math.floor(studioXp / 180));
   const studioXpProgress = studioXp % 180;
@@ -645,6 +652,7 @@ export default function Home() {
 
   function resetCreativeProjectState() {
     setScriptAnswers({});
+    setScriptCommittedCount(0);
     setScriptReport(null);
     setScriptFeedback("");
     setScriptFeedbackQuestionId(null);
@@ -894,6 +902,7 @@ export default function Home() {
   }
 
   function requestScriptEvaluation() {
+    if (scriptCommittedCount !== scriptQuestions.length - 1 || !scriptAnswers[scriptQuestions[scriptQuestions.length - 1]?.id]) return;
     setEvaluatingScript(true);
     try {
       showScriptPaper(evaluateScript(scriptAnswers, scriptQuestions.map((question) => question.id), genre.name, studioLevel));
@@ -903,15 +912,23 @@ export default function Home() {
   }
 
   function selectScriptOption(questionId: string, optionId: string) {
-    const before = deriveScriptBuild(scriptAnswers, scriptQuestions as Parameters<typeof deriveScriptBuild>[1], genre.name);
-    const nextAnswers = { ...scriptAnswers, [questionId]: optionId };
-    const after = deriveScriptBuild(nextAnswers, scriptQuestions as Parameters<typeof deriveScriptBuild>[1], genre.name);
-    setScriptAnswers(nextAnswers);
-    setScriptFeedback(describeBuildChange(before, after));
-    setScriptFeedbackQuestionId(questionId);
+    if (scriptQuestions[scriptCommittedCount]?.id !== questionId) return;
+    setScriptAnswers((current) => ({ ...current, [questionId]: optionId }));
     setScriptReport(null);
     setRewriteCost(0);
     setRewriteMarketDelta(0);
+  }
+
+  function commitScriptChoice(questionIndex: number) {
+    const question = scriptQuestions[questionIndex];
+    if (!question || questionIndex !== scriptCommittedCount || !scriptAnswers[question.id] || questionIndex >= scriptQuestions.length - 1) return;
+    const beforeAnswers = { ...scriptAnswers };
+    delete beforeAnswers[question.id];
+    const before = deriveScriptBuild(beforeAnswers, scriptQuestions as Parameters<typeof deriveScriptBuild>[1], genre.name);
+    const after = deriveScriptBuild(scriptAnswers, scriptQuestions as Parameters<typeof deriveScriptBuild>[1], genre.name);
+    setScriptFeedback(describeBeginnerBuildChange(before, after));
+    setScriptFeedbackQuestionId(question.id);
+    setScriptCommittedCount(questionIndex + 1);
   }
 
   function applyRewrite(direction: RewriteDirection) {
@@ -1079,6 +1096,7 @@ export default function Home() {
     setTitle("未命名计划");
     setIpSelection({ route: "original", sourceId: null });
     setScriptAnswers({});
+    setScriptCommittedCount(0);
     setScriptReport(null);
     setScriptFeedback("");
     setScriptFeedbackQuestionId(null);
@@ -1199,32 +1217,35 @@ export default function Home() {
               <header className="script-paper-head">
                 <span>SCRIPT DEVELOPMENT · YEAR {year}</span>
                 <h1>《{title}》{scriptReport ? "剧本评估书" : "创作定稿单"}</h1>
-                <p>{genre.icon} {genre.name} · {scriptReport ? "制片部内部评估件" : `已完成 ${Object.keys(scriptAnswers).length} / ${scriptQuestions.length} 项创作决策`}</p>
+                <p>{genre.icon} {genre.name} · {scriptReport ? "制片部内部评估件" : `已确认 ${scriptCommittedCount} / ${scriptQuestions.length} 项创作决策`}</p>
               </header>
 
               {!scriptReport ? <>
-                <div className="script-build-desk">
-                  <header><div><small>BUILD DESK</small><b>{scriptBuildPreview.core?.name ?? "先选择核心流派"}</b></div><span>{scriptBuildPreview.core ? scriptBuildPreview.alignedChoices >= 2 ? `核心共鸣 2/2 · 已激活${scriptBuildPreview.alignedChoices > 2 ? ` · 同向强化 ${scriptBuildPreview.alignedChoices} 次` : ""}` : `核心共鸣 ${scriptBuildPreview.alignedChoices}/2 · 形成中` : "等待形成连接"}</span></header>
-                  <div className="build-desk-grid"><section><span>核心 / 关键词</span><b>{scriptBuildPreview.core ? `${scriptBuildPreview.core.name} · ${scriptBuildPreview.keywords.join(" / ") || "等待路线牌"}` : "首题将锁定本片核心方向"}</b></section><section><span>已激活组合</span><b>{scriptBuildPreview.activeEngines.join(" / ") || "至少两次同向强化可启动核心引擎"}</b></section><section className={scriptBuildPreview.unresolvedFlaws.length ? "warning" : "resolved"}><span>未解决缺陷</span><b>{scriptBuildPreview.unresolvedFlaws.join(" / ") || "当前没有悬而未决的创作缺口"}</b></section>{scriptBuildPreview.nextConnections.length > 0 && <section><span>下一步可能连接</span><b>{scriptBuildPreview.nextConnections.map((item) => `${item.name}：还缺「${item.missingKeyword}」`).join(" / ")}</b></section>}</div>
-                  <p className="build-order-note">效果按 Q1 → Q6 的叙事顺序结算；点击顺序不会改变缺陷先后关系。</p>
-                  {scriptFeedback && <p className="build-live-feedback">最新构筑反馈 · {scriptFeedback}</p>}
+                <div className="script-build-desk beginner-build-desk">
+                  <header><div><small>STORY ROUTE</small><b>{scriptBuildPreview.core?.name ?? "先确定故事方向"}</b></div><span>第 {scriptCommittedCount + 1} / {scriptQuestions.length} 题</span></header>
+                  <div className="beginner-build-guide"><p><b>怎么玩：</b>每次只选一题。选项可以暂时更换；确认后锁定，并揭晓它对故事造成的影响。</p><div aria-label={`已确认 ${scriptCommittedCount}/${scriptQuestions.length}`}><i style={{ width: `${(scriptCommittedCount / scriptQuestions.length) * 100}%` }} /></div></div>
                 </div>
-                {selectedIpSource && ipSelection.route !== "original" && <div className="ip-script-inheritance"><span>IP INHERITANCE · {routeName(ipSelection.route)}</span><b>{ipEffects.inheritedTraits.length ? `继承前作：${ipEffects.inheritedTraits.join(" / ")}` : ipSelection.route === "reboot" ? "重启路线主动放弃旧特性，以新核心建立认知" : "前作旧存档未记录成片特性，本部从新核心开始积累"}</b><p>当前核心会与前作比较并影响系列疲劳；预计疲劳 {ipEffects.projectedFatigue}，前作期待评分 {ipEffects.expectedScore?.toFixed(1)}。</p></div>}
+                {selectedIpSource && ipSelection.route !== "original" && <div className="ip-script-inheritance compact"><span>系列提示 · {routeName(ipSelection.route)}</span><b>{ipEffects.inheritedTraits.length ? `带入前作特性：${ipEffects.inheritedTraits.join(" / ")}` : ipSelection.route === "reboot" ? "本次重启不带入旧作特性" : "本部将从新的成片特性开始积累"}</b><p>前作期待 {ipEffects.expectedScore?.toFixed(1)} 分；最终是否兑现，定稿后再揭晓。</p></div>}
                 <div className="questionnaire">
-                  {scriptQuestions.map((question, questionIndex) => <section className="script-question" key={question.id}>
-                    <div className="question-head"><span>Q{questionIndex + 1}</span><div><h2>{question.title}</h2><p>{question.prompt}</p></div></div>
-                    <div className="script-options">{question.options.map((option) => {
-                      const selected = scriptAnswers[question.id] === option.id;
-                      const priorBuild = deriveScriptBuild(scriptAnswers, scriptQuestions.slice(0, questionIndex) as Parameters<typeof deriveScriptBuild>[1], genre.name);
-                      const canRepairExistingFlaw = Boolean(option.repairsFlaw && priorBuild.unresolvedFlaws.includes(option.repairsFlaw));
-                      const functionLabel = option.routeFunction === "core" ? "核心流派" : option.routeFunction === "venture" ? "冒险牌" : option.routeFunction === "convert" ? "转化牌" : "强化牌";
-                      return <button key={option.id} className={selected ? "selected" : ""} onClick={() => selectScriptOption(question.id, option.id)} aria-pressed={selected}><b>{option.label}</b><small>{option.description}</small><span className="option-keyword"><em>#{option.keyword}</em><i>{functionLabel}</i></span>{option.routeFunction === "core" ? <span className="option-tradeoff option-core-effects"><em className="advantage">核心优势 · {option.coreAdvantages}</em><em className="cost">构筑代价 · {option.coreCosts}</em><em>激活条件 · {option.relation}</em></span> : <span className="option-tradeoff"><em>收益 · {option.upside}</em><em>关系 · {option.relation}</em>{option.addsFlaw && <em className="flaw">缺陷 · {option.addsFlaw}</em>}{option.repairsFlaw && <em className="repair">{canRepairExistingFlaw ? "修复" : "结构补强 / 预防"} · {option.repairsFlaw}</em>}</span>}{selected && <i>已勾选</i>}</button>;
-                    })}</div>{scriptFeedbackQuestionId === question.id && scriptFeedback && <p className="build-inline-feedback" aria-live="polite">本次选择变化 · {scriptFeedback}</p>}
-                  </section>)}
+                  {scriptQuestions.map((question, questionIndex) => {
+                    const state = scriptQuestionState(questionIndex, scriptCommittedCount);
+                    const selectedOption = question.options.find((option) => scriptAnswers[question.id] === option.id);
+                    return <section className={`script-question ${state}`} key={question.id}>
+                      <div className="question-head"><span>Q{questionIndex + 1}</span><div><h2>{question.title}</h2>{state === "current" && <p>{question.prompt}</p>}</div></div>
+                      {state === "locked" && selectedOption && <div className="script-locked-choice"><div><small>已确定</small><b>{selectedOption.label}</b></div><span>#{selectedOption.keyword}</span></div>}
+                      {state === "upcoming" && <p className="script-future-note">完成上一题后解锁</p>}
+                      {state === "current" && <><div className="script-options">{question.options.map((option) => {
+                        const selected = scriptAnswers[question.id] === option.id;
+                        const functionLabel = option.routeFunction === "core" ? "定故事方向" : option.routeFunction === "venture" ? "大胆尝试" : option.routeFunction === "convert" ? "换个角度" : "稳步推进";
+                        return <button key={option.id} className={selected ? "selected" : ""} onClick={() => selectScriptOption(question.id, option.id)} aria-pressed={selected}><b>{option.label}</b><small>{option.description}</small><span className="option-keyword"><em>#{option.keyword}</em><i>{functionLabel}</i></span>{selected && <i>当前选择</i>}</button>;
+                      })}</div>{selectedOption && <p className="script-choice-hint">已暂选「{selectedOption.label}」。确认前可以更换；确认后会锁定，并揭晓本次影响。</p>}{selectedOption && questionIndex < scriptQuestions.length - 1 && <button type="button" className="commit-script-choice" onClick={() => commitScriptChoice(questionIndex)}>确认这个选择，进入下一题 <span>→</span></button>}</>}
+                      {state === "locked" && scriptFeedbackQuestionId === question.id && scriptFeedback && <p className="build-inline-feedback" aria-live="polite">选择结果 · {scriptFeedback}</p>}
+                    </section>;
+                  })}
                 </div>
                 <div className="script-paper-actions">
                   <button className="paper-back" type="button" onClick={() => moveToStage(0)}>返回项目企划</button>
-                  <button className="evaluate-script" disabled={Object.keys(scriptAnswers).length !== scriptQuestions.length || evaluatingScript} onClick={requestScriptEvaluation}><span>{evaluatingScript ? "正在送审…" : "确认交稿"}</span><small>{Object.keys(scriptAnswers).length === scriptQuestions.length ? "封存选择并生成剧本评分" : `还需完成 ${scriptQuestions.length - Object.keys(scriptAnswers).length} 道选择`}</small></button>
+                  <button className="evaluate-script" disabled={scriptCommittedCount !== scriptQuestions.length - 1 || !scriptAnswers[scriptQuestions[scriptQuestions.length - 1]?.id] || evaluatingScript} onClick={requestScriptEvaluation}><span>{evaluatingScript ? "正在送审…" : scriptCommittedCount === scriptQuestions.length - 1 ? "确认交稿" : "继续完成选择"}</span><small>{scriptCommittedCount === scriptQuestions.length - 1 ? scriptAnswers[scriptQuestions[scriptQuestions.length - 1]?.id] ? "锁定最后一题并揭晓完整构筑" : "完成最后一题后即可交稿" : `当前进行到 Q${scriptCommittedCount + 1}`}</small></button>
                 </div>
               </> : <>
                 <div className="script-result-summary">

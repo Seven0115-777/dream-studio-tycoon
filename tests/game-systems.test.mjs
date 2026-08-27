@@ -4,7 +4,7 @@ import { calculateCompetitionPressure, generateCompetitors } from "../app/compet
 import { annualInvestmentAmount, boxOfficeSettlementTarget, buildAudienceScoreCurve, buildContentModel, buildReleaseModel, calculateCareerRewards, determineAwards, investorRevenueShare, projectPaymentDelta, scheduleRiskMultiplier, settleAnnualCompanyCash, studioReachMultiplier, yearlyOperatingCost } from "../app/economy.ts";
 import { evolveDirectorMarket, evolveGenreMarket } from "../app/market-system.ts";
 import { evaluateScript, getScriptQuestionBank, getScriptQuestions, rewriteScript } from "../app/script-engine.ts";
-import { coreStylesByGenre, deriveScriptBuild, describeBuildChange, describeCoreStyle, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, resolveEnsembleCast, resolveEnsembleDownstream, scriptConnections, summarizeScriptDownstream } from "../app/script-build-system.ts";
+import { coreStylesByGenre, deriveScriptBuild, describeBeginnerBuildChange, describeBuildChange, describeCoreStyle, ensembleCastOptions, getScriptDownstream, normalizeEnsembleCast, normalizeSequentialScriptProgress, resolveEnsembleCast, resolveEnsembleDownstream, scriptConnections, scriptQuestionState, summarizeScriptDownstream } from "../app/script-build-system.ts";
 import { awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, resolveProductionChain } from "../app/game-systems.ts";
 import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, normalizeFilmHistory, resolveIpProjectEffects } from "../app/ip-system.ts";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
@@ -582,6 +582,24 @@ test("build feedback follows the last changed answer and covers every visible ch
   const conflicted = { ...resonance, conflicts: ["表达冲突"] };
   assert.match(describeBuildChange(resonance, conflicted), /表达冲突增加/);
   assert.match(describeBuildChange(conflicted, resonance), /表达冲突化解/);
+});
+
+test("beginner feedback reveals one plain-language consequence only after commitment", () => {
+  const base = deriveScriptBuild({}, [], "犯罪悬疑");
+  const core = coreStylesByGenre["犯罪悬疑"][0];
+  const chosenCore = { ...base, core };
+  assert.equal(describeBeginnerBuildChange(base, chosenCore), "故事方向确定为「本格推理」，接下来用选择让它逐渐成型。");
+  assert.match(describeBeginnerBuildChange(chosenCore, { ...chosenCore, activeEngines: [core.engine] }), /核心路线已经成型/);
+  assert.match(describeBeginnerBuildChange(chosenCore, { ...chosenCore, unresolvedFlaws: ["伏笔缺口"] }), /后面仍有机会补救/);
+  assert.doesNotMatch(describeBeginnerBuildChange(chosenCore, { ...chosenCore, alignedChoices: 1 }), /\+\d|成本|开画|评审/);
+});
+
+test("script questions advance sequentially and old partial saves cannot skip ahead", () => {
+  const ids = ["q1", "q2", "q3", "q4", "q5", "q6"];
+  assert.deepEqual(normalizeSequentialScriptProgress(ids, { q1: "a", q3: "c" }), { answers: { q1: "a" }, committedCount: 0 });
+  assert.deepEqual(normalizeSequentialScriptProgress(ids, { q1: "a", q2: "b" }, 1), { answers: { q1: "a", q2: "b" }, committedCount: 1 });
+  assert.deepEqual(normalizeSequentialScriptProgress(ids, Object.fromEntries(ids.map((id) => [id, "a"]))).committedCount, 5);
+  assert.deepEqual([0, 1, 2].map((index) => scriptQuestionState(index, 1)), ["locked", "current", "upcoming"]);
 });
 
 test("editing an earlier answered card distinguishes lost recipes, removed risks and reexposed flaws", () => {
