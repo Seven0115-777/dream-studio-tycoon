@@ -9,6 +9,7 @@ import { addFilmToSeason, buildSeasonStandings, defaultPoliciesForPath, emptySea
 import { availableReleaseSlotIds, awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, releaseSlotStatus, resolveProductionChain } from "../app/game-systems.ts";
 import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, normalizeFilmHistory, resolveIpGenre, resolveIpProjectEffects } from "../app/ip-system.ts";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres } from "../app/talent-system.ts";
+import { advanceWordOfMouthChapter, annualRhythmForYear, emptyWordOfMouthProgress, strategySlotCapacityForYear, wordOfMouthGoals, wordOfMouthLegacyEffects, wordOfMouthReleasePlans } from "../app/progression-system.ts";
 
 const releaseBase = {
   appeal: 82,
@@ -253,6 +254,37 @@ test("annual scouting favors ordinary rookies while the yearly refresh guarantee
   assert.deepEqual(buildRookieMarket(1, new Set(), true, 20260827), buildRookieMarket(1, new Set(), true, 20260827), "a persisted refresh seed must reproduce the same list");
   const refreshLineups = new Set(Array.from({ length: 100 }, (_, seed) => buildRookieMarket(1, new Set(), true, seed).map((rookie) => rookie.id).join("-")));
   assert.ok(refreshLineups.size > 20, "independent refresh seeds should produce varied rookie lists");
+});
+
+test("annual rhythm spreads the second-to-fifth-year unlocks instead of stacking them", () => {
+  assert.deepEqual([1, 2, 3, 4, 5].map(strategySlotCapacityForYear), [0, 0, 1, 2, 3]);
+  assert.match(annualRhythmForYear(2).primary, /IP/);
+  assert.match(annualRhythmForYear(2).nextUnlock, /第二部电影后/);
+  assert.match(annualRhythmForYear(3).secondary, /1个经营策略槽/);
+  assert.match(annualRhythmForYear(4).secondary, /第2个经营策略槽/);
+  assert.match(annualRhythmForYear(5).secondary, /第3个经营策略槽/);
+});
+
+test("the word-of-mouth chapter offers distinct release tradeoffs and one-time progress", () => {
+  assert.equal(wordOfMouthGoals.length, 3);
+  assert.equal(wordOfMouthReleasePlans.length, 3);
+  assert.equal(new Set(wordOfMouthReleasePlans.map((plan) => `${plan.wordOfMouth}/${plan.openingPower}/${plan.pictureAwardBonus}`)).size, 3);
+  const start = emptyWordOfMouthProgress();
+  const first = advanceWordOfMouthChapter(start, "critics", { audienceScore: 8.4, openingPower: 82, gross: 50000, breakEvenGross: 35000, awards: 1 });
+  assert.equal(first.current, 1);
+  assert.equal(first.completedNow, false);
+  const second = advanceWordOfMouthChapter(first.progress, "critics", { audienceScore: 8.6, openingPower: 78, gross: 60000, breakEvenGross: 40000, awards: 2 });
+  assert.equal(second.current, 2);
+  assert.equal(second.completedNow, true);
+  const afterCompletion = advanceWordOfMouthChapter(second.progress, "critics", { audienceScore: 8.8, openingPower: 76, gross: 70000, breakEvenGross: 40000, awards: 1 });
+  assert.equal(afterCompletion.completedNow, false, "a completed chapter cannot grant its first-completion reward again");
+});
+
+test("chapter legacies stay dormant until year six and remain route-specific", () => {
+  assert.deepEqual(wordOfMouthLegacyEffects("critics", true, 5), { wordOfMouth: 0, retention: 0, pictureAwardBonus: 0, directorAwardBonus: 0 });
+  assert.deepEqual(wordOfMouthLegacyEffects("critics", true, 6), { wordOfMouth: 1, retention: 0, pictureAwardBonus: 0, directorAwardBonus: 0 });
+  assert.deepEqual(wordOfMouthLegacyEffects("comeback", true, 6), { wordOfMouth: 0, retention: .004, pictureAwardBonus: 0, directorAwardBonus: 0 });
+  assert.deepEqual(wordOfMouthLegacyEffects("festival", true, 6), { wordOfMouth: 0, retention: 0, pictureAwardBonus: 1, directorAwardBonus: 1 });
 });
 
 test("genre training remains unique and rookie fees catch established stars after hit films", () => {

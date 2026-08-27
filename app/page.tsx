@@ -11,13 +11,15 @@ import { addFilmToSeason, buildSeasonStandings, defaultPoliciesForPath, emptySea
 import { availableReleaseSlotIds, awardWinCap, calculateLibraryIncome, evaluateAnnualGoal, generateAnnualGoals, generateProductionChain, getProductionChoiceState, judgeAwards, releaseSlotStatus, resolveProductionChain, type AwardNomination, type GoalOutcome, type ProductionChoice, type ReleaseSlotId } from "./game-systems";
 import { calculateReturningCastPremium, createFilmHistoryRecord, eligibleIpSources, expectationWordOfMouth, filmRecordId, findIpSource, ipRoutes, isIpEligible, normalizeFilmHistory, resolveIpGenre, resolveIpProjectEffects, routeName, suggestIpTitle, type FilmHistoryRecord, type IpProjectSelection, type IpRouteId } from "./ip-system";
 import { actorTier, ageAppealDecline, agencyCapacity, buildRookieMarket, currentActorAge, externalAgencyIncome, generateTalentNews, isMatureMarketEligible, matureContractQuote, retirementAge, rookieCandidates, rookieCareerSalary, rookieContractQuote, rookieExposureAppealGain, rookiePerformanceFee, talentMarketRoll, talentRenewalQuote, tierOpeningBonus, tierRank, tierScriptThreshold, trainingCapacity, trainingGain, uniqueGenres, type AgencyActor, type AgencyLedger, type AgencyProfile, type RookieCandidate, type TalentContract } from "./talent-system";
+import { advanceWordOfMouthChapter, annualRhythmForYear, chapterGoalProgress, emptyWordOfMouthProgress, isWordOfMouthChapterYear, strategySlotCapacityForYear, wordOfMouthGoals, wordOfMouthLegacyEffects, wordOfMouthReleasePlans, type ChapterGoalId, type ChapterReleasePlanId, type WordOfMouthProgress } from "./progression-system";
 
 type Genre = { name: string; icon: string; heat: number; color: string; heatChange?: number; marketNote?: string };
 type Director = MarketDirector;
 type Actor = AgencyActor;
 type DailyReport = { day: number; boxOffice: number; change: number | null; audienceScore: number; positiveRate: number; momentum: string; headline: string; audienceReaction: string; internetReaction: string; hotTopic: string };
 type PublicityContext = { director: Director; cast: Actor[]; genre: string; quality: number; honors: Record<number, string[]> };
-type Result = { quality: number; gross: number; profit: number; score: number; audience: number; days: number[]; monthDays: number[]; weekGross: number; tailGross: number; studioRevenue: number; investorShare?: number; investmentAmount?: number; successBonus: number; breakEvenGross: number; overheadCost: number; dailyReports: DailyReport[]; awards: string[]; nominations?: AwardNomination[]; awardCap?: number; goalOutcome?: GoalOutcome; xpGain: number; reputationGain: number; pathXpGain?: number; strategyNotes?: string[]; reachUsed: number; wordOfMouth: number; openingPower: number; retention: number; trend: string; trendNote: string; competitionPressure: number; scheduleRisk?: number; scheduleEfficiency?: number; libraryMultiplier?: number; buildName?: string; filmRecord?: FilmHistoryRecord };
+type ChapterOutcome = { goalId: ChapterGoalId; added: number; current: number; target: number; completed: boolean; completedNow: boolean; reward?: { cash: number; xp: number; reputation: number } };
+type Result = { quality: number; gross: number; profit: number; score: number; audience: number; days: number[]; monthDays: number[]; weekGross: number; tailGross: number; studioRevenue: number; investorShare?: number; investmentAmount?: number; successBonus: number; breakEvenGross: number; overheadCost: number; dailyReports: DailyReport[]; awards: string[]; nominations?: AwardNomination[]; awardCap?: number; goalOutcome?: GoalOutcome; chapterOutcome?: ChapterOutcome; xpGain: number; reputationGain: number; pathXpGain?: number; strategyNotes?: string[]; reachUsed: number; wordOfMouth: number; openingPower: number; retention: number; trend: string; trendNote: string; competitionPressure: number; scheduleRisk?: number; scheduleEfficiency?: number; libraryMultiplier?: number; buildName?: string; filmRecord?: FilmHistoryRecord };
 type ActorProfile = AgencyProfile;
 type Deal = { fee: number; morale: number; label: string };
 type CompanyTab = "roster" | "market" | "rookies";
@@ -95,6 +97,9 @@ type LocalGameSave = {
   studioFocusGenres?: string[];
   seasonStats?: SeasonStats;
   seasonArchive?: SeasonArchiveRecord[];
+  wordOfMouthGoalId?: ChapterGoalId | null;
+  wordOfMouthProgress?: WordOfMouthProgress;
+  chapterReleasePlanId?: ChapterReleasePlanId | null;
   history: FilmHistoryRecord[];
 };
 
@@ -365,6 +370,9 @@ export default function Home() {
   const [studioFocusGenres, setStudioFocusGenres] = useState<string[]>([]);
   const [seasonStats, setSeasonStats] = useState<SeasonStats>(() => emptySeasonStats(1));
   const [seasonArchive, setSeasonArchive] = useState<SeasonArchiveRecord[]>([]);
+  const [wordOfMouthGoalId, setWordOfMouthGoalId] = useState<ChapterGoalId | null>(null);
+  const [wordOfMouthProgress, setWordOfMouthProgress] = useState<WordOfMouthProgress>(() => emptyWordOfMouthProgress());
+  const [chapterReleasePlanId, setChapterReleasePlanId] = useState<ChapterReleasePlanId | null>(null);
   const [revealedDays, setRevealedDays] = useState(0);
   const [boxOfficeCashCredited, setBoxOfficeCashCredited] = useState(0);
   const [boxOfficeSettlementLocked, setBoxOfficeSettlementLocked] = useState(false);
@@ -488,6 +496,9 @@ export default function Home() {
         const restoredSeason = save.seasonStats ?? [...restoredHistory].filter((film) => (film.year ?? 0) >= seasonStartYear).reverse().reduce((stats, film) => addFilmToSeason(stats, { gross: film.gross, awards: film.awards, quality: film.quality ?? 75, breakEvenGross: film.breakEvenGross ?? 40000 }), emptySeasonStats(seasonStartYear));
         setSeasonStats(restoredSeason);
         setSeasonArchive(save.seasonArchive ?? []);
+        setWordOfMouthGoalId(save.wordOfMouthGoalId ?? (isWordOfMouthChapterYear(save.year) && restoredStage > 0 ? "critics" : null));
+        setWordOfMouthProgress({ ...emptyWordOfMouthProgress(), ...(save.wordOfMouthProgress ?? {}) });
+        setChapterReleasePlanId(save.chapterReleasePlanId ?? null);
       } catch {
         window.localStorage.removeItem(SAVE_KEY);
       } finally {
@@ -576,10 +587,13 @@ export default function Home() {
       studioFocusGenres,
       seasonStats,
       seasonArchive,
+      wordOfMouthGoalId,
+      wordOfMouthProgress,
+      chapterReleasePlanId,
       history,
     };
     window.localStorage.setItem(SAVE_KEY, JSON.stringify(save));
-  }, [activePolicyIds, actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, deals, director?.id, directorPool, ensembleCastId, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, ipSelection.route, ipSelection.sourceId, productionChoices, productionLocked, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieMarketSeed, rookieRefreshSeed, rookieRefreshYear, saveReady, scriptAnswers, scriptCommittedCount, scriptReport, seasonArchive, seasonStats, signedTalents, slot.id, stage, studioFocusGenres, studioPathCommitted, studioPathId, studioPathXp, studioXp, title, year]);
+  }, [activePolicyIds, actorHonors, actorPool, agencyLedger, annualGoalId, annualGoalLocked, boxOfficeCashCredited, boxOfficeSettlementLocked, budget.name, cash, cast, chapterReleasePlanId, deals, director?.id, directorPool, ensembleCastId, eventChoice, expiryReminderDismissedYear, genre.name, genreMarket, history, investmentClaimedYear, ipSelection.route, ipSelection.sourceId, productionChoices, productionLocked, projectCostPaid, promo.name, reputation, result, revealedDays, rewriteCost, rewriteMarketDelta, rookieAlumniIds, rookieMarketSeed, rookieRefreshSeed, rookieRefreshYear, saveReady, scriptAnswers, scriptCommittedCount, scriptReport, seasonArchive, seasonStats, signedTalents, slot.id, stage, studioFocusGenres, studioPathCommitted, studioPathId, studioPathXp, studioXp, title, wordOfMouthGoalId, wordOfMouthProgress, year]);
 
   const studioLevel = Math.min(10, 1 + Math.floor(studioXp / 180));
   const studioXpProgress = studioXp % 180;
@@ -594,6 +608,7 @@ export default function Home() {
   const signedActors = useMemo(() => signedTalents.map((contract) => ({ contract, actor: actorPool.find((actor) => actor.id === contract.actorId) })).filter((item): item is { contract: TalentContract; actor: Actor } => Boolean(item.actor)), [actorPool, signedTalents]);
   const expiringTalents = useMemo(() => signedActors.filter(({ contract }) => contract.contractEndYear === year), [signedActors, year]);
   const showExpiryReminder = inStudioHub && expiringTalents.length > 0 && expiryReminderDismissedYear !== year;
+  const annualRhythm = annualRhythmForYear(year);
   const usedTrainingSlots = signedTalents.filter((contract) => contract.lastTrainedYear === year).length;
   const annualPayroll = signedTalents.reduce((sum, contract) => sum + contract.annualSalary, 0);
   const negotiatingProfile = negotiating ? getActorProfile(negotiating) : null;
@@ -617,7 +632,15 @@ export default function Home() {
   const ipEffects = useMemo(() => resolveIpProjectEffects(history, ipSelection, { genre: genre.name, castIds: cast.map((actor) => actor.id), coreStyleId: scriptBuild.core?.id }), [cast, genre.name, history, ipSelection, scriptBuild.core?.id]);
   const currentStudioPath = studioPaths.find((path) => path.id === studioPathId) ?? null;
   const currentStudioPolicies = policiesForPath(studioPathId);
-  const studioStrategyReady = year < 2 || Boolean(studioPathId && (studioPathId !== "genre" || studioFocusGenres.length === 2));
+  const plannedStrategySlots = strategySlotCapacityForYear(year);
+  const strategySlotCapacity = Math.max(plannedStrategySlots, activePolicyIds.length);
+  const studioStrategyReady = year < 3 || Boolean(studioPathCommitted && studioPathId && (studioPathId !== "genre" || studioFocusGenres.length === 2));
+  const chapterActive = isWordOfMouthChapterYear(year);
+  const chapterGoal = wordOfMouthGoals.find((goal) => goal.id === wordOfMouthGoalId) ?? null;
+  const chapterGoalReady = !chapterActive || Boolean(chapterGoal);
+  const chapterProgressValue = chapterGoal ? chapterGoalProgress(chapterGoal.id, wordOfMouthProgress) : 0;
+  const chapterReleasePlan = wordOfMouthReleasePlans.find((plan) => plan.id === chapterReleasePlanId) ?? null;
+  const chapterLegacy = wordOfMouthLegacyEffects(wordOfMouthGoalId, wordOfMouthProgress.completed, year);
   const currentMarketEra = marketEraForYear(year);
   const nextMarketEra = upcomingMarketEra(year);
   const currentRivalPlans = useMemo(() => rivalPlansForYear(year), [year]);
@@ -631,9 +654,15 @@ export default function Home() {
     hasRookie: cast.some((actor) => actor.id >= 100),
     signedCastCount: cast.filter((actor) => signedTalentIds.has(actor.id)).length,
   }), [budget.name, cast, director, genre.name, ipSelection.route, signedTalentIds]);
-  const studioStrategy = useMemo(() => resolveStudioStrategy(studioPathId, activePolicyIds, studioPathXp, studioFocusGenres, strategyContext), [activePolicyIds, strategyContext, studioFocusGenres, studioPathId, studioPathXp]);
+  const effectiveStudioPathId = year >= 3 && studioPathCommitted ? studioPathId : null;
+  const studioStrategy = useMemo(() => resolveStudioStrategy(effectiveStudioPathId, activePolicyIds, studioPathXp, studioFocusGenres, strategyContext), [activePolicyIds, effectiveStudioPathId, strategyContext, studioFocusGenres, studioPathXp]);
   const eraEffects = useMemo(() => resolveMarketEraEffects(year, strategyContext), [strategyContext, year]);
-  const combinedStrategyNotes = [...summarizeStrategyEffects("厂牌", studioStrategy), ...summarizeStrategyEffects("时代", eraEffects)];
+  const combinedStrategyNotes = [
+    ...summarizeStrategyEffects("厂牌", studioStrategy),
+    ...summarizeStrategyEffects("时代", eraEffects),
+    ...(chapterReleasePlan ? [`章节发行 · ${chapterReleasePlan.name}：${chapterReleasePlan.note}`] : []),
+    ...(year >= 6 && wordOfMouthProgress.completed && chapterGoal ? [`口碑遗产 · ${chapterGoal.legacy.replace("完成后：", "")}`] : []),
+  ];
   const industryCostIndex = Math.min(1.32, 1 + (year - 1) * .025);
   const currentBudgetCost = Math.round(budget.value * industryCostIndex * scriptEffects.budgetCostMultiplier * studioStrategy.budgetCostMultiplier * eraEffects.budgetCostMultiplier);
   const currentPromoCost = Math.round(promo.value * industryCostIndex);
@@ -764,14 +793,24 @@ export default function Home() {
   function chooseStudioPath(pathId: StudioPathId) {
     if (studioPathCommitted) return;
     setStudioPathId(pathId);
-    setActivePolicyIds(defaultPoliciesForPath(pathId));
+    setActivePolicyIds([]);
     setStudioFocusGenres(pathId === "genre" ? [...new Set([genre.name, marketLeader.name])].slice(0, 2) : []);
+  }
+
+  function confirmStudioPath() {
+    if (!studioPathId || (studioPathId === "genre" && studioFocusGenres.length !== 2)) return;
+    setStudioPathCommitted(true);
   }
 
   function toggleStudioPolicy(policyId: string) {
     const policy = currentStudioPolicies.find((item) => item.id === policyId);
     if (!policy || studioPathXp < policy.unlockAt) return;
-    setActivePolicyIds((current) => current.includes(policyId) ? current.filter((id) => id !== policyId) : current.length < 3 ? [...current, policyId] : current);
+    setActivePolicyIds((current) => current.includes(policyId) ? current.filter((id) => id !== policyId) : current.length < strategySlotCapacity ? [...current, policyId] : current);
+  }
+
+  function chooseWordOfMouthGoal(goalId: ChapterGoalId) {
+    if (!chapterActive || stage !== 0 || annualGoalLocked || (wordOfMouthGoalId && (year > 3 || chapterProgressValue > 0))) return;
+    setWordOfMouthGoalId(goalId);
   }
 
   function toggleStudioFocusGenre(genreName: string) {
@@ -1052,45 +1091,49 @@ export default function Home() {
   }
 
   function simulate() {
-    if (!director || cast.length !== 2 || !selectedSlotAvailable) return;
+    if (!director || cast.length !== 2 || !selectedSlotAvailable || (chapterActive && (!chapterReleasePlan || !wordOfMouthGoalId))) return;
     const outstandingProjectCost = projectPaymentDelta(totalCost, projectCostPaid);
     if (outstandingProjectCost > cash) return;
     const acting = ensemblePerformance?.acting ?? leadActing;
     const leadAppeal = cast.reduce((sum, item) => sum + item.appeal, 0) / cast.length;
     const appeal = ensemblePerformance ? director.appeal * .25 + leadAppeal * .75 * ensembleDownstream.starPowerMultiplier : director.appeal / 3 + leadAppeal * 2 / 3 * scriptEffects.starPowerMultiplier;
-    const contentInput = { scriptScore, directorSkill: director.skill, acting, budgetQuality: budget.quality, fit, eventBonus: productionTotals.quality, chemistry: performanceCoordination, morale: averageMorale + productionTotals.morale, directorMatched: director.genres.includes(genre.name), actorFitRate: cast.filter((actor) => actor.genres.includes(genre.name)).length / cast.length, scriptQualityBonus: ensembleDownstream.qualityBonus + ipEffects.qualityBonus + studioStrategy.qualityBonus + eraEffects.qualityBonus, scriptWordOfMouthBonus: ensembleDownstream.wordOfMouthBonus + ipEffects.wordOfMouth + studioStrategy.wordOfMouthBonus + eraEffects.wordOfMouthBonus };
+    const contentInput = { scriptScore, directorSkill: director.skill, acting, budgetQuality: budget.quality, fit, eventBonus: productionTotals.quality, chemistry: performanceCoordination, morale: averageMorale + productionTotals.morale, directorMatched: director.genres.includes(genre.name), actorFitRate: cast.filter((actor) => actor.genres.includes(genre.name)).length / cast.length, scriptQualityBonus: ensembleDownstream.qualityBonus + ipEffects.qualityBonus + studioStrategy.qualityBonus + eraEffects.qualityBonus, scriptWordOfMouthBonus: ensembleDownstream.wordOfMouthBonus + ipEffects.wordOfMouth + studioStrategy.wordOfMouthBonus + eraEffects.wordOfMouthBonus + (chapterReleasePlan?.wordOfMouth ?? 0) + chapterLegacy.wordOfMouth };
     const baseContent = buildContentModel(contentInput);
     const expectationDelta = expectationWordOfMouth(baseContent.audienceScore, ipEffects.expectedScore);
     const content = expectationDelta ? buildContentModel({ ...contentInput, scriptWordOfMouthBonus: contentInput.scriptWordOfMouthBonus + expectationDelta }) : baseContent;
     const { quality, wordOfMouth, audienceScore: roundedScore } = content;
     const genreSlotBonus = (slot.id === "spring" && genre.name === "合家欢喜剧") || (slot.id === "summer" && genre.name === "科幻冒险") ? 1.12 : 1;
-    const openingPower = Math.min(99, Math.round(appeal * .4 + (genre.heat + studioStrategy.genreHeatBonus + eraEffects.genreHeatBonus) * .2 + promo.power * .25 + studioReach / 1.18 * 100 * .12 + castTierOpeningBonus * scriptEffects.starPowerMultiplier + scriptEffects.openingPower + ipEffects.openingPower + studioStrategy.openingPower + eraEffects.openingPower));
-    const release = buildReleaseModel({ appeal, genreHeat: genre.heat + studioStrategy.genreHeatBonus + eraEffects.genreHeatBonus, promoCost: promo.value, promoPower: promo.power, budgetCost: budget.value, budgetCapacity: budget.capacity, slotBoost: slot.boost, studioReach, genreSlotBonus, eventMarket: productionTotals.market + rewriteMarketDelta, wordOfMouth, audienceScore: roundedScore, openingPower, competitionPressure, totalCost, investmentAmount: investmentClaimed ? annualInvestment : 0, scheduleRisk: productionTotals.scheduleRisk, retentionBonus: scriptEffects.retention + ipEffects.retention + studioStrategy.retentionBonus + eraEffects.retentionBonus });
+    const openingPower = Math.min(99, Math.round(appeal * .4 + (genre.heat + studioStrategy.genreHeatBonus + eraEffects.genreHeatBonus) * .2 + promo.power * .25 + studioReach / 1.18 * 100 * .12 + castTierOpeningBonus * scriptEffects.starPowerMultiplier + scriptEffects.openingPower + ipEffects.openingPower + studioStrategy.openingPower + eraEffects.openingPower + (chapterReleasePlan?.openingPower ?? 0)));
+    const release = buildReleaseModel({ appeal, genreHeat: genre.heat + studioStrategy.genreHeatBonus + eraEffects.genreHeatBonus, promoCost: promo.value, promoPower: promo.power, budgetCost: budget.value, budgetCapacity: budget.capacity, slotBoost: slot.boost, studioReach, genreSlotBonus, eventMarket: productionTotals.market + rewriteMarketDelta, wordOfMouth, audienceScore: roundedScore, openingPower, competitionPressure, totalCost, investmentAmount: investmentClaimed ? annualInvestment : 0, scheduleRisk: productionTotals.scheduleRisk, retentionBonus: scriptEffects.retention + ipEffects.retention + studioStrategy.retentionBonus + eraEffects.retentionBonus + chapterLegacy.retention });
     const { weekDays: days, weekScores, monthDays, weekGross, tailGross, gross, studioRevenue, investorShare, successBonus, profit, breakEvenGross } = release;
     const audience = Math.round(gross * 10000 / 42);
     const trend = days[6] > days[0] * 1.05 ? "口碑逆袭" : days[1] > days[0] && days[6] > days[0] * .72 ? "稳健长线" : days[1] < days[0] * .9 && days[6] < days[0] * .55 ? "高开低走" : "正常回落";
     const scheduleNote = productionTotals.scheduleRisk > 0 ? ` 片场累计 +${productionTotals.scheduleRisk} 档期风险，已错过 ${missedReleaseSlots.map((item) => item.name).join("、") || "无"}，发行效率降至 ${Math.round(release.scheduleEfficiency * 100)}%。` : " 片场档期风险已控制，不产生额外发行增益。";
     const ipExpectationNote = ipEffects.expectedScore === null ? "" : expectationDelta > 0 ? ` 成片评分超过系列期待 ${ipEffects.expectedScore.toFixed(1)}，IP口碑 +1。` : expectationDelta < 0 ? ` 成片评分未达到系列期待 ${ipEffects.expectedScore.toFixed(1)}，IP口碑 ${expectationDelta}。` : ` 成片评分基本兑现系列期待 ${ipEffects.expectedScore.toFixed(1)}。`;
     const trendNote = `${trend === "口碑逆袭" ? "高口碑抵消同档竞争，路人推荐推动持续增量。" : trend === "高开低走" ? "明星与宣发拉高首日，但剧本口碑未能承接热度。" : trend === "稳健长线" ? "内容、开画与同档竞争较为均衡，首周维持稳定排片。" : "市场热度按常规节奏释放，后续表现由口碑与竞品共同决定。"}${scheduleNote}${ipExpectationNote}`;
-    const awardInput = { year, quality, directorSkill: director.skill, fit, acting: leadActing, chemistry: performanceCoordination, audienceScore: roundedScore, pictureBonus: ensembleDownstream.pictureBonus + studioStrategy.pictureAwardBonus + eraEffects.pictureAwardBonus, directorBonus: ensembleDownstream.directorBonus + studioStrategy.directorAwardBonus + eraEffects.directorAwardBonus, actingBonus: scriptEffects.awardActing + studioStrategy.actingAwardBonus + eraEffects.actingAwardBonus, chemistryBonus: ensemblePerformance?.awardBonus ?? 0 };
+    const awardInput = { year, quality, directorSkill: director.skill, fit, acting: leadActing, chemistry: performanceCoordination, audienceScore: roundedScore, pictureBonus: ensembleDownstream.pictureBonus + studioStrategy.pictureAwardBonus + eraEffects.pictureAwardBonus + (chapterReleasePlan?.pictureAwardBonus ?? 0) + chapterLegacy.pictureAwardBonus, directorBonus: ensembleDownstream.directorBonus + studioStrategy.directorAwardBonus + eraEffects.directorAwardBonus + (chapterReleasePlan?.directorAwardBonus ?? 0) + chapterLegacy.directorAwardBonus, actingBonus: scriptEffects.awardActing + studioStrategy.actingAwardBonus + eraEffects.actingAwardBonus, chemistryBonus: ensemblePerformance?.awardBonus ?? 0 };
     const nominations = judgeAwards(awardInput, slotCompetitors);
     const awardCap = awardWinCap(awardInput);
     const awards = nominations.filter((nomination) => nomination.won).map((nomination) => nomination.category);
     if (awards.includes("最佳表演") && performanceLead?.acting && performanceLead.acting >= 93) setActorHonors((current) => ({ ...current, [performanceLead.id]: [...new Set([...(current[performanceLead.id] ?? []), "最佳表演"])] }));
     const goalOutcome = annualGoal ? evaluateAnnualGoal(annualGoal, { gross, awards: awards.length, totalCost, genre: genre.name, castIds: cast.map((actor) => actor.id), audienceScore: roundedScore, breakEvenGross }) : undefined;
+    const chapterAdvance = chapterActive && wordOfMouthGoalId ? advanceWordOfMouthChapter(wordOfMouthProgress, wordOfMouthGoalId, { audienceScore: roundedScore, openingPower, gross, breakEvenGross, awards: awards.length }) : null;
+    const chapterReward = chapterAdvance?.completedNow && !wordOfMouthProgress.rewardClaimed ? { cash: 1800, xp: 45, reputation: 10 } : undefined;
+    const chapterOutcome: ChapterOutcome | undefined = chapterAdvance && wordOfMouthGoalId ? { goalId: wordOfMouthGoalId, added: chapterAdvance.added, current: Math.min(chapterAdvance.target, chapterAdvance.current), target: chapterAdvance.target, completed: chapterAdvance.progress.completed, completedNow: chapterAdvance.completedNow, reward: chapterReward } : undefined;
+    if (chapterAdvance) setWordOfMouthProgress({ ...chapterAdvance.progress, rewardClaimed: wordOfMouthProgress.rewardClaimed || Boolean(chapterReward) });
     const careerRewards = calculateCareerRewards(quality, roundedScore, gross / Math.max(1, breakEvenGross), awards.length);
-    const xpGain = careerRewards.xpGain + (goalOutcome?.reward.xp ?? 0);
-    const reputationGain = careerRewards.reputationGain + (goalOutcome?.reward.reputation ?? 0);
+    const xpGain = careerRewards.xpGain + (goalOutcome?.reward.xp ?? 0) + (chapterReward?.xp ?? 0);
+    const reputationGain = careerRewards.reputationGain + (goalOutcome?.reward.reputation ?? 0) + (chapterReward?.reputation ?? 0);
     const dailyReports = buildDailyReports(title, days, wordOfMouth, weekScores, { director, cast, genre: genre.name, quality, honors: actorHonors });
     const filmRecord = createFilmHistoryRecord({ year, title, genre: genre.name, gross, awards: awards.length, score: roundedScore, quality, breakEvenGross, directorId: director.id, castIds: cast.map((actor) => actor.id), coreStyleId: scriptBuild.core?.id, buildName: scriptBuild.buildName, traits: [...new Set([...ipEffects.inheritedTraits, ...scriptBuild.finalTraits])], libraryMultiplier: ensembleDownstream.libraryMultiplier * studioStrategy.libraryMultiplier * eraEffects.libraryMultiplier, selection: ipSelection, effects: ipEffects });
-    const pathXpGain = studioPathId ? studioPathXpGain({ quality, gross, breakEvenGross, awards: awards.length }) : 0;
-    setResult({ quality, gross, profit, score: roundedScore, audience, days, monthDays, weekGross, tailGross, studioRevenue, investorShare, investmentAmount: investmentClaimed ? annualInvestment : 0, successBonus, breakEvenGross, overheadCost, dailyReports, awards, nominations, awardCap, goalOutcome, xpGain, reputationGain, pathXpGain, strategyNotes: combinedStrategyNotes, reachUsed: studioReach, wordOfMouth, openingPower, retention: release.retention, trend, trendNote, competitionPressure, scheduleRisk: productionTotals.scheduleRisk, scheduleEfficiency: release.scheduleEfficiency, libraryMultiplier: filmRecord.libraryMultiplier, buildName: scriptBuild.buildName, filmRecord });
+    const pathXpGain = studioPathId && studioPathCommitted && year >= 3 ? studioPathXpGain({ quality, gross, breakEvenGross, awards: awards.length }) : 0;
+    setResult({ quality, gross, profit, score: roundedScore, audience, days, monthDays, weekGross, tailGross, studioRevenue, investorShare, investmentAmount: investmentClaimed ? annualInvestment : 0, successBonus, breakEvenGross, overheadCost, dailyReports, awards, nominations, awardCap, goalOutcome, chapterOutcome, xpGain, reputationGain, pathXpGain, strategyNotes: combinedStrategyNotes, reachUsed: studioReach, wordOfMouth, openingPower, retention: release.retention, trend, trendNote, competitionPressure, scheduleRisk: productionTotals.scheduleRisk, scheduleEfficiency: release.scheduleEfficiency, libraryMultiplier: filmRecord.libraryMultiplier, buildName: scriptBuild.buildName, filmRecord });
     setStudioXp((value) => value + xpGain);
     if (pathXpGain) setStudioPathXp((value) => value + pathXpGain);
     setSeasonStats((current) => addFilmToSeason(current, { gross, awards: awards.length, quality, breakEvenGross }));
     setReputation((value) => Math.max(0, value + reputationGain));
     setProjectCostPaid(totalCost);
-    setCash((value) => Math.max(0, value - outstandingProjectCost + (goalOutcome?.reward.cash ?? 0)));
+    setCash((value) => Math.max(0, value - outstandingProjectCost + (goalOutcome?.reward.cash ?? 0) + (chapterReward?.cash ?? 0)));
     setBoxOfficeCashCredited(0);
     setBoxOfficeSettlementLocked(false);
     setRevealedDays(0);
@@ -1223,6 +1266,7 @@ export default function Home() {
     setScriptFeedbackQuestionId(null);
     setAnnualGoalId(null);
     setAnnualGoalLocked(false);
+    setChapterReleasePlanId(null);
     setRewriteCost(0);
     setRewriteMarketDelta(0);
     setDirector(null);
@@ -1259,6 +1303,13 @@ export default function Home() {
           <h1>欢迎回到，<em>造梦片场。</em></h1>
           <p>电影制作按房间依次推进；经纪部与融资中心随时开放，不会改变当前项目进度。</p>
         </header>
+        {year > 1 && <aside className="annual-rhythm-card" aria-label={`第${year}年节奏提示`}>
+          <span>{annualRhythm.eyebrow}</span>
+          <b>{annualRhythm.title}</b>
+          <p>{annualRhythm.description}</p>
+          <div><small>{annualRhythm.primary}</small><small>{annualRhythm.secondary}</small></div>
+          <i>下一节点 · {annualRhythm.nextUnlock}</i>
+        </aside>}
         <div className="studio-rooms">
           <StudioRoomButton className="room-current" code={`当前主线 · ${activeWorkflowRoom.code}`} name={activeWorkflowRoom.name} note={`${stageLabels[stage]} · ${activeWorkflowRoom.prompt}`} onClick={openWorkflowRoom} />
           <StudioRoomButton className="room-agency" code="ALWAYS OPEN" name="艺人经纪部" note={`${signedTalents.length}/${rosterCapacity} 位旗下艺人 · 签约与培训`} onClick={openAgencyUtility} />
@@ -1312,10 +1363,14 @@ export default function Home() {
               </>}
               {year > 1 && <div className="market-cycle-banner"><div><span>YEAR {year} MARKET</span><b>年度电影市场重新洗牌</b></div><dl><dt>当前最热</dt><dd>{marketLeader.name} · {marketLeader.heat}</dd><dt>上升最快</dt><dd>{marketRiser.name} · {(marketRiser.heatChange ?? 0) >= 0 ? "+" : ""}{marketRiser.heatChange ?? 0}</dd><dt>可约导演</dt><dd>{availableDirectors.length} / {directorPool.length} 位</dd></dl></div>}
               <div className="market-era-card"><div><span>MARKET ERA · {currentMarketEra.years}</span><b>{currentMarketEra.name}</b><p>{currentMarketEra.headline}</p></div><strong>{currentMarketEra.rule}</strong>{nextMarketEra && <aside><small>下一年预告</small><b>{nextMarketEra.name}</b><p>{nextMarketEra.rule}</p></aside>}</div>
-              {year >= 2 && <>
-                <SectionTitle number="厂" title="确立制片厂路线" note={studioPathCommitted ? "厂牌已经确立；每年仍可重配三项经营策略" : "本片开拍后正式锁定，决定未来长期打法"} />
+              {chapterActive && <section className="chapter-goal-panel" aria-label="口碑回潮章节目标">
+                <header><div><span>ACTIVE CHAPTER · 3—5年</span><b>口碑回潮</b><p>三年只选一条主目标。每部电影还会多一次发行抉择，完成后留下永久厂牌能力。</p></div>{chapterGoal && <strong>{Math.min(chapterGoal.target, chapterProgressValue)}<small>/{chapterGoal.target}</small></strong>}</header>
+                {!chapterGoal || (year === 3 && chapterProgressValue === 0) ? <div className="chapter-goal-grid">{wordOfMouthGoals.map((goal) => <button type="button" key={goal.id} disabled={annualGoalLocked} className={wordOfMouthGoalId === goal.id ? "selected" : ""} aria-pressed={wordOfMouthGoalId === goal.id} onClick={() => chooseWordOfMouthGoal(goal.id)}><span>{goal.name}</span><b>{goal.rule}</b><small>{goal.legacy}</small></button>)}</div> : <div className="chapter-progress"><div><i style={{ width: `${Math.min(100, chapterProgressValue / chapterGoal.target * 100)}%` }} /></div><b>{wordOfMouthProgress.completed ? "章节目标已完成，永久能力将在第6年生效" : chapterGoal.rule}</b><small>{chapterGoal.legacy}</small></div>}
+              </section>}
+              {(year >= 3 || studioPathCommitted) && <>
+                <SectionTitle number="厂" title="经营制片厂路线" note={studioPathCommitted ? `第${year}年开放 ${plannedStrategySlots} 个策略槽；策略卡仍需厂牌经验解锁` : "完成第二部电影后选择的长期路线，将从本年开始生效"} />
                 {!studioPathCommitted && <div className="studio-path-grid">{studioPaths.map((path) => <button type="button" key={path.id} className={studioPathId === path.id ? "selected" : ""} aria-pressed={studioPathId === path.id} onClick={() => chooseStudioPath(path.id)}><span>{path.code}</span><b>{path.name}</b><p>{path.tagline}</p><small>{path.strength}</small><i>{path.pressure}</i></button>)}</div>}
-                {currentStudioPath && <div className="studio-strategy-panel"><header><div><span>{currentStudioPath.code} · Lv.{strategyLevel(studioPathXp)}</span><b>{currentStudioPath.name}</b><p>{currentStudioPath.strength}；{currentStudioPath.pressure}</p></div><strong>{studioPathXp}<small>厂牌经验</small></strong></header><div className="strategy-xp-track"><i style={{ width: `${Math.min(100, studioPathXp / 90 * 100)}%` }} /></div>{studioPathId === "genre" && <div className="studio-focus-genres"><span>选择两个永久专精题材</span><div>{genreMarket.map((item) => <button type="button" key={item.name} disabled={studioPathCommitted} className={studioFocusGenres.includes(item.name) ? "selected" : ""} onClick={() => toggleStudioFocusGenre(item.name)}>{item.name}</button>)}</div><p>{studioFocusGenres.length}/2 · 锁定厂牌后不可更换</p></div>}<div className="studio-policy-head"><div><span>经营策略</span><b>已启用 {activePolicyIds.length}/3</b></div><p>启用的是规则与代价，不是无条件数值升级。</p></div><div className="studio-policy-grid">{currentStudioPolicies.map((policy) => { const unlocked = studioPathXp >= policy.unlockAt; const active = activePolicyIds.includes(policy.id); return <button type="button" key={policy.id} disabled={!unlocked} className={active ? "active" : ""} aria-pressed={active} onClick={() => toggleStudioPolicy(policy.id)}><span>{unlocked ? active ? "已启用" : "可配置" : `需 ${policy.unlockAt} 经验`}</span><b>{policy.name}</b><small>{policy.upside}</small><i>{policy.pressure}</i></button>; })}</div>{activePolicyIds.length >= 3 && <p className="strategy-slot-note">策略槽已满；先关闭一项，才能启用新的策略。</p>}</div>}
+                {currentStudioPath && <div className="studio-strategy-panel"><header><div><span>{currentStudioPath.code} · Lv.{strategyLevel(studioPathXp)}</span><b>{currentStudioPath.name}</b><p>{currentStudioPath.strength}；{currentStudioPath.pressure}</p></div><strong>{studioPathXp}<small>厂牌经验</small></strong></header><div className="strategy-xp-track"><i style={{ width: `${Math.min(100, studioPathXp / 90 * 100)}%` }} /></div>{studioPathId === "genre" && <div className="studio-focus-genres"><span>选择两个永久专精题材</span><div>{genreMarket.map((item) => <button type="button" key={item.name} disabled={studioPathCommitted} className={studioFocusGenres.includes(item.name) ? "selected" : ""} onClick={() => toggleStudioFocusGenre(item.name)}>{item.name}</button>)}</div><p>{studioFocusGenres.length}/2 · 锁定厂牌后不可更换</p></div>}{!studioPathCommitted && <button type="button" className="confirm-studio-path" disabled={studioPathId === "genre" && studioFocusGenres.length !== 2} onClick={confirmStudioPath}>确认长期路线 · 第三年生效</button>}{studioPathCommitted && <><div className="studio-policy-head"><div><span>经营策略</span><b>已启用 {activePolicyIds.length}/{strategySlotCapacity}</b></div><p>每年只新增一个槽位；厂牌经验会继续解锁新的可选策略。</p></div><div className="studio-policy-grid">{currentStudioPolicies.map((policy) => { const unlocked = studioPathXp >= policy.unlockAt; const active = activePolicyIds.includes(policy.id); return <button type="button" key={policy.id} disabled={!unlocked} className={active ? "active" : ""} aria-pressed={active} onClick={() => toggleStudioPolicy(policy.id)}><span>{unlocked ? active ? "已启用" : "可配置" : `需 ${policy.unlockAt} 经验`}</span><b>{policy.name}</b><small>{policy.upside}</small><i>{policy.pressure}</i></button>; })}</div>{activePolicyIds.length >= strategySlotCapacity && <p className="strategy-slot-note">本年 {strategySlotCapacity} 个策略槽已满；先关闭一项才能更换。</p>}</>}</div>}
               </>}
               <SectionTitle number="竞" title={`五年影业赛季 · 第 ${seasonStats.films + 1}/5 部`} note={`第 ${seasonStats.startYear}—${seasonStats.startYear + 4} 年累计比较，不因单片失利立即结束`} />
               <div className="rival-plan-grid">{currentRivalPlans.map((plan) => <article key={plan.id} style={{ borderTopColor: plan.color }}><span>{plan.identity}</span><b>{plan.name}</b><p>《{plan.title}》· {plan.genre}</p><small>{plan.approach}{plan.genre === genre.name ? ` · 同题材压力 +${plan.pressure}%` : ""}</small></article>)}</div>
@@ -1341,7 +1396,7 @@ export default function Home() {
               <SectionTitle number="2" title="制作规模" note={`公司当前可用资金 ¥${money(cash)}`} />
               <div className="budget-choice">{budgets.map((item) => <button key={item.name} className={budget.name === item.name ? "selected" : ""} onClick={() => setBudget(item)}>{item.name}<small>¥{money(Math.round(item.value * industryCostIndex))}</small></button>)}</div>
               <div className="cost-index-note"><span>行业成本指数 ×{industryCostIndex.toFixed(2)}</span><p>场地、器材、保险与人工会随年份上涨；高等级公司也承担更高年度运营成本。</p></div>
-              <ActionBar label={!studioStrategyReady ? "请先确立厂牌路线" : annualGoal ? `${routeName(ipSelection.route)} · ${annualGoal.title} · ${title || "未命名"}` : "请先选择年度委托"} detail={!studioStrategyReady ? studioPathId === "genre" ? "类型片工坊需要选满两个永久专精题材" : "第二年起，公司需要选择一条长期经营路线" : `制作预算 ¥${money(currentBudgetCost)} · 确认后立即支付${currentStudioPath ? ` · ${currentStudioPath.name}` : ""}${selectedIpSource ? ` · 品牌热度 ${selectedIpSource.brandHeat}` : ""}${annualGoal ? ` · ${annualGoal.description}` : ""}`} button="开始剧本创作" disabled={!studioStrategyReady || !annualGoal || !title.trim() || projectPaymentDelta(currentBudgetCost, projectCostPaid) > cash} onClick={() => { if (studioPathId) setStudioPathCommitted(true); setAnnualGoalLocked(true); commitProjectCost(currentBudgetCost, 1); }} />
+              <ActionBar label={!studioStrategyReady ? "请先确认厂牌路线" : !chapterGoalReady ? "请先选择口碑章节目标" : annualGoal ? `${routeName(ipSelection.route)} · ${annualGoal.title} · ${title || "未命名"}` : "请先选择年度委托"} detail={!studioStrategyReady ? studioPathId === "genre" ? "类型片工坊需要选满两个永久专精题材并确认" : "第三年开始前，需要确认第二部电影后选择的长期路线" : !chapterGoalReady ? "第3—5年只选一条章节路线，完成后获得永久能力" : `制作预算 ¥${money(currentBudgetCost)} · 确认后立即支付${currentStudioPath && year >= 3 ? ` · ${currentStudioPath.name}` : ""}${selectedIpSource ? ` · 品牌热度 ${selectedIpSource.brandHeat}` : ""}${annualGoal ? ` · ${annualGoal.description}` : ""}`} button="开始剧本创作" disabled={!studioStrategyReady || !chapterGoalReady || !annualGoal || !title.trim() || projectPaymentDelta(currentBudgetCost, projectCostPaid) > cash} onClick={() => { setAnnualGoalLocked(true); commitProjectCost(currentBudgetCost, 1); }} />
             </>
           )}
 
@@ -1450,6 +1505,7 @@ export default function Home() {
               <SectionTitle number="竞" title={`当前预选：${slot.name}同期竞品`} note={`${slotCompetitors.length} 部影片已提前锁定核心排片`} />
               <div className="competition-summary"><div><span>预计观众分流</span><b>-{Math.round(competitionPressure * 100)}%</b></div><p>{slotCompetitors.filter((movie) => movie.tier === "S" || movie.tier === "SS").length ? `本档期有 ${slotCompetitors.filter((movie) => movie.tier === "S" || movie.tier === "SS").length} 部 S/SS 级强敌；高口碑可以在上映后逐步夺回排片。` : "本档期没有S级统治者，仍需警惕同类型影片分流。"}</p></div>
               <div className="competitor-grid">{slotCompetitors.map((movie) => <CompetitorCard key={movie.id} movie={movie} />)}</div>
+              {chapterActive && <><SectionTitle number="章" title="选择本片口碑发行策略" note="三种方法各有代价；选择会直接进入票房与奖项模型" /><div className="chapter-release-grid">{wordOfMouthReleasePlans.map((plan) => <button type="button" key={plan.id} className={chapterReleasePlanId === plan.id ? "selected" : ""} aria-pressed={chapterReleasePlanId === plan.id} onClick={() => setChapterReleasePlanId(plan.id)}><span>{plan.name}</span><b>{plan.summary}</b><small>{plan.note}</small></button>)}</div></>}
               <SectionTitle number="2" title="制定宣发计划" note="宣发成本将在上映前支付" />
               <div className="release-key-art"><div className="campaign-poster"><span>{genre.icon}</span><small>星火影业 出品</small><h2>{title}</h2><p>{genre.name}</p></div><div><span>宣发主视觉</span><b>电影海报已移交发行团队</b><p>这张主视觉将在定档官宣、城市路演和影院物料中使用，不再占用拍摄现场的场记信息位。</p></div></div>
               <div className="marketing-grid">{marketing.map((item) => <button key={item.name} className={promo.name === item.name ? "selected" : ""} onClick={() => setPromo(item)}><strong>{item.name}</strong><span>¥{money(Math.round(item.value * industryCostIndex))}</span><small>宣发强度 {item.power} · 首日触达 ×{item.boost.toFixed(2)}</small></button>)}</div>
@@ -1458,7 +1514,7 @@ export default function Home() {
               {selectedIpSource && ipSelection.route !== "original" && <div className="ip-release-brief"><span>IP</span><div><b>{routeName(ipSelection.route)} · 品牌开画 {ipEffects.openingPower >= 0 ? "+" : ""}{ipEffects.openingPower}</b><p>前作期待 {ipEffects.expectedScore?.toFixed(1)} · 系列疲劳 {ipEffects.projectedFatigue} · 回归主演 {ipEffects.returningCastCount}/2。最终口碑会根据成片评分是否兑现期待再结算。</p></div></div>}
               <div className="ticket-formula"><div><span>内容底盘</span><b>剧本 {scriptScore}</b><small>剧本低于65分时，最终观众评分最高只能达到6.5</small></div><div><span>剧本引擎</span><b>{scriptBuild.buildName}</b><small>{summarizeScriptDownstream(scriptBuild.downstream).join(" · ")}</small></div><div><span>主创号召</span><b>{Math.round(((director?.appeal ?? 0) + cast.reduce((sum, actor) => sum + actor.appeal, 0)) / 3)}</b><small>演员评级额外提供开画 +{castTierOpeningBonus.toFixed(1)}，但不能替代口碑</small></div><div><span>发行放大</span><b>×{(slot.boost * promo.boost).toFixed(2)}</b><small>高宣发抬升开画，但投入越高边际收益越低</small></div><div><span>同期竞争</span><b>-{Math.round(competitionPressure * 100)}%</b><small>竞品分流开画观众，并持续争夺排片</small></div><div><span>档期风险影响</span><b>×{scheduleEfficiency.toFixed(2)}</b><small>{productionTotals.scheduleRisk > 0 ? `累计 +${productionTotals.scheduleRisk} 风险，每点降低 2.5% 开画效率，最多降低 10%` : "风险已控制；负风险不会额外提高票房"}</small></div><div className="studio-factor"><span>制片人基本盘</span><b>×{studioReach.toFixed(2)}</b><small>只强化开画，等级与声望影响会逐日衰减</small></div></div>
               <div className="cost-breakdown"><span>制作与主创 <b>¥{money(totalBeforeRelease - ipCastingPremium)}</b></span><span>完片保险与管理 <b>¥{money(overheadCost)}</b></span><span>宣发及片场追加 <b>¥{money(currentPromoCost + currentEventCost)}</b></span>{ipCastingPremium > 0 && <span>IP回归主演溢价 <b>¥{money(ipCastingPremium)}</b></span>}{rewriteCost > 0 && <span>剧本改稿 <b>¥{money(rewriteCost)}</b></span>}<strong>总投资 ¥{money(totalCost)}</strong></div>
-              <ActionBar label={`当前预选：${slot.name} · ${promo.name}`} detail={`最终只确认 ${slot.name} · 总投资 ¥${money(totalCost)} · 待支付宣发 ¥${money(Math.max(0, projectPaymentDelta(totalCost, projectCostPaid)))} · 同档分流 ${Math.round(competitionPressure * 100)}%`} button={`确认${slot.name}上映，揭晓票房`} disabled={!selectedSlotAvailable || projectPaymentDelta(totalCost, projectCostPaid) > cash} onClick={simulate} back={() => moveToStage(3)} />
+              <ActionBar label={chapterActive && !chapterReleasePlan ? "请先选择本片口碑发行策略" : `当前预选：${slot.name} · ${promo.name}`} detail={chapterActive && !chapterReleasePlan ? "章节发行策略会改变开画、口碑或奖项评审，不存在无代价的最优项" : `最终只确认 ${slot.name} · 总投资 ¥${money(totalCost)} · 待支付宣发 ¥${money(Math.max(0, projectPaymentDelta(totalCost, projectCostPaid)))} · 同档分流 ${Math.round(competitionPressure * 100)}%`} button={`确认${slot.name}上映，揭晓票房`} disabled={!selectedSlotAvailable || (chapterActive && !chapterReleasePlan) || projectPaymentDelta(totalCost, projectCostPaid) > cash} onClick={simulate} back={() => moveToStage(3)} />
             </>
           )}
 
@@ -1486,14 +1542,16 @@ export default function Home() {
                 <div className="month-settlement"><div><small>首周累计</small><b>¥{money(result.weekGross)}</b><span>直播展示的第 1—7 天</span></div><i>+</i><div><small>长尾票房</small><b>¥{money(result.tailGross)}</b><span>口碑、竞品与周末效应测算第 8—30 天</span></div><i>=</i><div className="month-total"><small>30日最终票房</small><b>¥{money(result.gross)}</b><span>片方回款 ¥{money(result.studioRevenue)}{result.investorShare ? ` · 投资方分成 ¥${money(result.investorShare)}` : ""} · 回本线 ¥{money(result.breakEvenGross)}{result.successBonus ? ` · 税费与主创分成 ¥${money(result.successBonus)}` : ""}</span></div></div>
                 <SectionTitle number="结" title="项目与生涯结算" note={`院线分账后片方按 34% 回款${result.investorShare ? "，先结算投资方分成" : ""}，剩余盈利继续结算税费与主创分成`} />
                 <div className="growth-result"><div><span>制片人经验</span><b>+{result.xpGain} XP</b><small>当前 Lv.{studioLevel} · {studioXpProgress}/180</small></div><div><span>行业声望</span><b className={result.reputationGain >= 0 ? "positive" : "negative"}>{result.reputationGain >= 0 ? "+" : ""}{result.reputationGain}</b><small>当前声望 {reputation}</small></div><div><span>项目收益</span><b className={result.profit >= 0 ? "positive" : "negative"}>{result.profit >= 0 ? "+" : "-"}¥{money(Math.abs(result.profit))}</b><small>30日票房 ¥{money(result.gross)} · 片方分账 ¥{money(result.studioRevenue)}{result.investorShare ? ` · 投资方分成 -¥${money(result.investorShare)}` : ""}</small></div></div>
-                {currentStudioPath && <div className="strategy-result-card"><header><div><span>STUDIO IDENTITY</span><b>{currentStudioPath.name} · 厂牌经验 +{result.pathXpGain ?? 0}</b></div><strong>Lv.{strategyLevel(studioPathXp)}</strong></header><div>{result.strategyNotes?.map((note) => <p key={note}>{note}</p>)}</div></div>}
+                {currentStudioPath && year >= 3 && <div className="strategy-result-card"><header><div><span>STUDIO IDENTITY</span><b>{currentStudioPath.name} · 厂牌经验 +{result.pathXpGain ?? 0}</b></div><strong>Lv.{strategyLevel(studioPathXp)}</strong></header><div>{result.strategyNotes?.map((note) => <p key={note}>{note}</p>)}</div></div>}
                 <div className="season-result-card"><header><span>五年赛季进度</span><b>{seasonStats.films}/5 部</b><p>{year % 5 === 0 ? "本年度经营完成后进行赛季总评" : `距离阶段总评还有 ${5 - seasonStats.films} 部`}</p></header>{seasonStandings.slice(0, 4).map((entry, index) => <div className={entry.player ? "player" : ""} key={entry.id}><span>{index + 1}</span><b>{entry.name}</b><small>¥{money(entry.gross)} · {entry.awards} 奖</small><strong>{entry.score}</strong></div>)}</div>
                 <div className="career-update"><span>艺人动态</span><b>{cast.map((actor) => actor.name).join("、")}获得项目经验；下一年度的号召力和身价将按照票房回本倍数重新评估。自社新人若以高演技搭档高人气演员，还会获得额外曝光成长。</b></div>
                 {result.filmRecord && <><SectionTitle number="IP" title={result.filmRecord.route === "original" ? "作品IP潜力" : "系列资产更新"} note={result.filmRecord.route === "original" ? "成功作品会成为下一年度的项目来源" : `《${result.filmRecord.seriesTitle}》第 ${result.filmRecord.seriesEntry} 部`} /><div className={`ip-result-card ${isIpEligible(result.filmRecord) ? "qualified" : "developing"}`}><span>{isIpEligible(result.filmRecord) ? "✓" : "↗"}</span><div><small>{routeName(result.filmRecord.route ?? "original")} · BRAND ASSET</small><b>{result.filmRecord.route === "original" ? isIpEligible(result.filmRecord) ? "IP开发资格已解锁" : "作品尚在积累品牌认知" : `《${result.filmRecord.seriesTitle}》系列继续成长`}</b><p>品牌热度 {result.filmRecord.brandHeat} · 系列疲劳 {result.filmRecord.fatigue} · 片库长尾 ×{(result.filmRecord.libraryMultiplier ?? 1).toFixed(2)}</p></div><strong>{result.filmRecord.route === "original" ? isIpEligible(result.filmRecord) ? "下一年可选择正统续集、角色衍生或重启" : "提高评分、回本倍数或赢得奖项即可解锁" : `第 ${result.filmRecord.seriesEntry} 部已写入系列履历`}</strong></div></>}
                 {annualGoal && result.goalOutcome && <><SectionTitle number="委" title="年度委托结算" note={result.goalOutcome.completed ? "目标达成，额外奖励已发放" : "未达成不扣除资源，保留本次经验"} /><div className={`goal-result ${result.goalOutcome.completed ? "complete" : "missed"}`}><span>{result.goalOutcome.completed ? "✓" : "↗"}</span><div><small>{annualGoal.title} · {"★".repeat(annualGoal.stars)}</small><b>{result.goalOutcome.completed ? "委托完成" : "本年惜未完成"}</b><p>{result.goalOutcome.explanation}</p><i>{result.goalOutcome.progressLabel}</i></div><strong>{result.goalOutcome.completed ? `+¥${money(result.goalOutcome.reward.cash)} · +${result.goalOutcome.reward.xp} XP · +${result.goalOutcome.reward.reputation} 声望` : "下一年会刷新三个新目标"}</strong></div></>}
+                {result.chapterOutcome && chapterGoal && <><SectionTitle number="章" title="口碑回潮章节进度" note={result.chapterOutcome.completedNow ? "章节目标首次达成，永久能力已经获得" : "进度会保留到第五年结算"} /><div className={`chapter-result ${result.chapterOutcome.completed ? "complete" : "progressing"}`}><span>{result.chapterOutcome.completed ? "✓" : "+"}</span><div><small>{chapterGoal.name} · 本片进度 +{result.chapterOutcome.added}</small><b>{result.chapterOutcome.current}/{result.chapterOutcome.target} · {result.chapterOutcome.completed ? "章节完成" : "继续推进"}</b><p>{chapterGoal.rule}</p><i>{chapterGoal.legacy}</i></div><strong>{result.chapterOutcome.reward ? `首次达成 +¥${money(result.chapterOutcome.reward.cash)} · +${result.chapterOutcome.reward.xp} XP · +${result.chapterOutcome.reward.reputation} 声望` : result.chapterOutcome.completed ? "永久能力将在第6年起生效" : "下一部电影继续推进"}</strong></div></>}
                 <SectionTitle number="奖" title="金幕奖提名与获奖" note={`${result.nominations?.filter((item) => item.nominated).length ?? result.awards.length} 项提名 · ${result.awards.length} 项获奖（本片最多 ${result.awardCap ?? Math.max(2, result.awards.length)} 项）`} />
                 <div className="awards-row nomination-list">{result.nominations?.map((nomination) => <div className={nomination.won ? "won" : nomination.nominated ? "nominated" : "not-nominated"} key={nomination.category}><span>{nomination.won ? "★" : nomination.nominated ? "◇" : "—"}</span><b>{nomination.category}<i>{nomination.won ? "获奖" : nomination.nominated ? "提名" : "未提名"}</i></b><small>{nomination.note}{nomination.category === "最佳表演" && nomination.won && performanceLead?.acting && performanceLead.acting >= 93 ? ` ${performanceLead.name}解锁${performanceLead.gender === "女" ? "影后" : "影帝"}称号。` : ""}</small></div>) ?? (result.awards.length ? result.awards.map((award) => <div className="won" key={award}><span>★</span><b>{award}</b><small>旧存档奖项记录</small></div>) : <div className="no-award"><span>—</span><b>本届惜未获奖</b><small>完成新一年度作品即可进入提名比较。</small></div>)}</div>
-                <div className="year-end"><div><span>经纪业务已解锁</span><b>把电影收益变成公司的长期艺人资产。</b><small>签约成熟艺人，或从新人开始培养下一位明星</small></div><button onClick={enterCompanyManagement}>进入公司经营期 <i>→</i></button></div>
+                {year === 2 && !studioPathCommitted && <section className="studio-path-unlock"><SectionTitle number="新" title="第二部作品完成 · 确立制片厂路线" note="此时你已经体验过两部电影，再选择未来长期打法；路线从第三年生效" /><div className="studio-path-grid">{studioPaths.map((path) => <button type="button" key={path.id} className={studioPathId === path.id ? "selected" : ""} aria-pressed={studioPathId === path.id} onClick={() => chooseStudioPath(path.id)}><span>{path.code}</span><b>{path.name}</b><p>{path.tagline}</p><small>{path.strength}</small><i>{path.pressure}</i></button>)}</div>{currentStudioPath && <div className="path-final-confirm"><b>已预选：{currentStudioPath.name}</b><p>{currentStudioPath.strength}；{currentStudioPath.pressure}</p>{studioPathId === "genre" && <div className="studio-focus-genres"><span>选择两个永久专精题材</span><div>{genreMarket.map((item) => <button type="button" key={item.name} className={studioFocusGenres.includes(item.name) ? "selected" : ""} onClick={() => toggleStudioFocusGenre(item.name)}>{item.name}</button>)}</div><p>{studioFocusGenres.length}/2 · 确认后不可更换</p></div>}<button type="button" disabled={studioPathId === "genre" && studioFocusGenres.length !== 2} onClick={confirmStudioPath}>确认厂牌路线 · 第三年生效</button></div>}</section>}
+                <div className="year-end"><div><span>{year === 2 && !studioPathCommitted ? "先完成本年长期决策" : "经纪业务已解锁"}</span><b>{year === 2 && !studioPathCommitted ? "第二部作品结束后，选择制片厂路线再进入经营期。" : "把电影收益变成公司的长期艺人资产。"}</b><small>{year === 2 && !studioPathCommitted ? "这项选择第三年才生效，不会倒推影响本片结果" : "签约成熟艺人，或从新人开始培养下一位明星"}</small></div><button disabled={year === 2 && !studioPathCommitted} onClick={enterCompanyManagement}>{year === 2 && !studioPathCommitted ? "请先确认厂牌路线" : "进入公司经营期"} <i>→</i></button></div>
               </>}
             </>
           )}
